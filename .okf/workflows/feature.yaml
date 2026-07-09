@@ -1,0 +1,29 @@
+name: feature
+description: Add a new capability while preserving library, API, frontend, and package boundaries.
+agents:
+  - leader
+  - planner
+  - developer
+  - reviewer
+  - qa
+steps:
+  - id: clarify
+    owner: leader
+    action: Define the feature outcome, affected users, and success criteria.
+  - id: plan
+    owner: planner
+    action: Identify affected standards, source files, API contracts, package boundaries, routes, and verification commands.
+  - id: implement
+    owner: developer
+    action: Add the smallest complete slice following architecture and coding-style standards.
+  - id: review
+    owner: reviewer
+    action: Check for regressions, package-boundary drift, security mistakes, and missing verification.
+  - id: verify
+    owner: qa
+    action: Run backend, package, frontend, and smoke checks relevant to the changed files.
+done_when:
+  - Feature is reachable through the intended API, package surface, or UI.
+  - Public contracts and docs are updated when needed.
+  - Relevant checks pass or failures are explicitly reported.
+

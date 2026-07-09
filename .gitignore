@@ -1,0 +1,66 @@
+# .NET build output
+bin/
+obj/
+TestResults/
+artifacts/
+coverage/
+coverage.*
+*.trx
+*.coverage
+*.coveragexml
+
+# NuGet/package output
+*.nupkg
+*.snupkg
+packages/
+*.nuspec
+
+# ASP.NET/local settings
+*.Development.json.user
+appsettings.Local.json
+appsettings.*.Local.json
+Properties/ServiceDependencies/
+Properties/PublishProfiles/
+
+# Local databases
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# React/Vite/Node
+node_modules/
+dist/
+build/
+.vite/
+.vite-inspect/
+.turbo/
+.cache/
+coverage-final.json
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+bun.lockb
+
+# Environment files
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# IDE/editor
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.rsuser
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini

@@ -1,0 +1,25 @@
+name: refactor
+description: Improve structure without changing behavior.
+agents:
+  - planner
+  - developer
+  - reviewer
+  - qa
+steps:
+  - id: scope
+    owner: planner
+    action: Define the behavior-preserving boundary and affected files.
+  - id: change
+    owner: developer
+    action: Make the smallest structural change that preserves public behavior.
+  - id: review
+    owner: reviewer
+    action: Check for accidental contract, package, or route changes.
+  - id: verify
+    owner: qa
+    action: Run the same checks that protected the previous behavior.
+done_when:
+  - Behavior remains unchanged.
+  - Structure is clearer or duplication is reduced.
+  - Relevant verification is reported.
+

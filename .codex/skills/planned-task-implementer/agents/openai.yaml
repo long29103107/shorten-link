@@ -1,0 +1,4 @@
+interface:
+  display_name: "Planned Task Implementer"
+  short_description: "Review and implement one planned OKF task"
+  default_prompt: "Use $planned-task-implementer to review, clarify, and implement a specific planned OKF task through successful builds."

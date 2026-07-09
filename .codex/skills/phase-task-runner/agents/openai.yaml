@@ -1,0 +1,4 @@
+interface:
+  display_name: "Phase Task Runner"
+  short_description: "Run one active OKF phase task at a time"
+  default_prompt: "Use $phase-task-runner to find and execute the current active OKF phase task."

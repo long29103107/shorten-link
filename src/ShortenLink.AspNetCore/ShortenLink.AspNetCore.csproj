@@ -1,0 +1,28 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\ShortenLink.Core\ShortenLink.Core.csproj" />
+    <ProjectReference Include="..\ShortenLink.Infrastructure\ShortenLink.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>true</IsPackable>
+    <PackageId>ShortenLink.AspNetCore</PackageId>
+    <Title>ShortenLink.AspNetCore</Title>
+    <Description>ASP.NET Core dependency injection and endpoint mapping integration for ShortenLink.</Description>
+    <Authors>ShortenLink Contributors</Authors>
+    <PackageTags>short-link;url-shortener;aspnetcore;dotnet;nuget</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://example.com/shorten-link</RepositoryUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>

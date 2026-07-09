@@ -1,0 +1,25 @@
+name: bugfix
+description: Fix incorrect behavior with the smallest safe change.
+agents:
+  - planner
+  - developer
+  - reviewer
+  - qa
+steps:
+  - id: reproduce
+    owner: planner
+    action: Identify the failing behavior, expected behavior, and smallest reproduction.
+  - id: fix
+    owner: developer
+    action: Patch the narrowest layer that owns the behavior.
+  - id: review
+    owner: reviewer
+    action: Check for regressions and contract drift.
+  - id: verify
+    owner: qa
+    action: Run the targeted test/build/smoke check.
+done_when:
+  - The original failure is fixed.
+  - A regression check exists where practical.
+  - Relevant verification is reported.
+
