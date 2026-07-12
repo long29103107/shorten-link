@@ -260,3 +260,40 @@ Phase 2 adds configuration-driven provider selection to the reusable library bou
 - Set `ShortenLink:Database:UsePostgres` to `true` and provide `ShortenLink:Database:PostgresConnectionString` to switch the same host and library code to PostgreSQL.
 - The reusable API, repository, and service contracts do not change between providers.
 - `dotnet pack ShortenLink.slnx -c Release` still produces the same reusable packages; provider choice stays in configuration.
+
+### Local PostgreSQL Host Smoke
+
+Minimum prerequisites:
+
+- A reachable PostgreSQL instance.
+- A database and credentials that match your connection string.
+- TCP access to the PostgreSQL host and port from this machine.
+
+Example PowerShell environment override:
+
+```powershell
+$env:ShortenLink__Database__UsePostgres = "true"
+$env:ShortenLink__Database__PostgresConnectionString = "Host=localhost;Port=5432;Database=shorten_link;Username=postgres;Password=postgres"
+dotnet run --project src\ShortenLink.Api\ShortenLink.Api.csproj --no-launch-profile
+```
+
+For a repeatable host smoke run, use:
+
+```powershell
+.\scripts\smoke-postgres-host.ps1
+```
+
+Override the connection string or API URL when needed:
+
+```powershell
+.\scripts\smoke-postgres-host.ps1 -ConnectionString "Host=localhost;Port=5432;Database=shorten_link;Username=postgres;Password=postgres" -ApiUrl "http://127.0.0.1:5199"
+```
+
+The smoke script:
+
+- checks that PostgreSQL is reachable before starting the API
+- runs the demo host with `UsePostgres = true`
+- verifies health, create, detail, redirect, and deactivate behavior
+- returns a JSON summary on success
+
+When PostgreSQL is not reachable, the script fails early with a concrete blocker message instead of pretending the host smoke passed.

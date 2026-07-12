@@ -22,12 +22,6 @@ appsettings.*.Local.json
 Properties/ServiceDependencies/
 Properties/PublishProfiles/
 
-# Local databases
-*.db
-*.db-shm
-*.db-wal
-*.sqlite
-*.sqlite3
 
 # React/Vite/Node
 node_modules/
