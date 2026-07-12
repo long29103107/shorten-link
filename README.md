@@ -139,6 +139,11 @@ Minimum `appsettings.json` configuration for SQLite default mode:
     "Redirect": {
       "EnableFrontendFallback": true,
       "FrontendFallbackPath": "/not-found"
+    },
+    "Analytics": {
+      "Enabled": false,
+      "UseAsyncWorker": true,
+      "QueueCapacity": 512
     }
   }
 }
@@ -185,6 +190,101 @@ Switch to PostgreSQL by configuration only:
 The demo host still uses `AddShortenLink(builder.Configuration);` with no application-code changes. On startup it calls `EnsureCreated()` for the selected provider, so SQLite remains the default local path while PostgreSQL can be enabled with a valid connection string.
 
 `IShortLinkService`, `CreateShortLinkRequest`, and `CreateShortLinkResult` live in `ShortenLink.Core.Services`. Consumer code should continue to call the reusable service contract instead of re-creating short-link rules in the host app.
+
+## Click Analytics
+
+Phase 3 adds an opt-in click analytics path for redirects:
+
+- Leave `ShortenLink:Analytics:Enabled` as `false` to keep redirect behavior unchanged with no click persistence.
+- Set `ShortenLink:Analytics:Enabled` to `true` to capture short code, click timestamp, remote IP, user agent, and referrer for successful redirects.
+- Leave `ShortenLink:Analytics:UseAsyncWorker` as `true` to enqueue analytics writes through the hosted background worker so redirect responses do not wait for database persistence.
+- `ShortenLink:Analytics:QueueCapacity` controls the bounded in-memory queue used by the async worker.
+
+Example configuration:
+
+```json
+{
+  "ShortenLink": {
+    "Analytics": {
+      "Enabled": true,
+      "UseAsyncWorker": true,
+      "QueueCapacity": 512
+    }
+  }
+}
+```
+
+## Redirect Cache
+
+Phase 3 also adds an opt-in cache path for successful redirects:
+
+- Leave `ShortenLink:Cache:Enabled` as `false` to keep redirect lookups database-backed.
+- Set `ShortenLink:Cache:Enabled` to `true` and `ShortenLink:Cache:Provider` to `Memory` for a local in-process cache.
+- Set `ShortenLink:Cache:Provider` to `Redis` and provide `ShortenLink:Cache:RedisConnectionString` to use Redis without changing application code.
+- `ShortenLink:Cache:EntryTtlSeconds` controls cache duration for links that do not have their own expiration.
+- Deactivating a link invalidates its cache entry so previously cached redirects stop resolving.
+
+Example memory-cache configuration:
+
+```json
+{
+  "ShortenLink": {
+    "Cache": {
+      "Enabled": true,
+      "Provider": "Memory",
+      "RedisConnectionString": "localhost:6379",
+      "EntryTtlSeconds": 3600
+    }
+  }
+}
+```
+
+## Endpoint Rate Limiting
+
+Phase 3 adds opt-in HTTP rate limiting for public create and redirect paths:
+
+- Leave `ShortenLink:RateLimiting:Enabled` as `false` to keep current endpoint behavior.
+- Set `ShortenLink:RateLimiting:Enabled` to `true` to apply independent fixed-window limits to create and redirect requests.
+- `ShortenLink:RateLimiting:Create` applies to `POST /api/short-links`.
+- `ShortenLink:RateLimiting:Redirect` applies to `GET /{code}` before cache lookup, database lookup, or click analytics recording.
+- Over-limit requests return HTTP `429`.
+
+Example configuration:
+
+```json
+{
+  "ShortenLink": {
+    "RateLimiting": {
+      "Enabled": true,
+      "Create": {
+        "PermitLimit": 60,
+        "WindowSeconds": 60,
+        "QueueLimit": 0
+      },
+      "Redirect": {
+        "PermitLimit": 120,
+        "WindowSeconds": 60,
+        "QueueLimit": 0
+      }
+    }
+  }
+}
+```
+
+Example Redis configuration:
+
+```json
+{
+  "ShortenLink": {
+    "Cache": {
+      "Enabled": true,
+      "Provider": "Redis",
+      "RedisConnectionString": "localhost:6379",
+      "EntryTtlSeconds": 3600
+    }
+  }
+}
+```
 
 ## Demo API Swagger And Demo UI
 

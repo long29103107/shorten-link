@@ -11,6 +11,8 @@ public sealed class ShortLinkDbContext : DbContext
 
     public DbSet<ShortLinkRecord> ShortLinks => Set<ShortLinkRecord>();
 
+    public DbSet<ShortLinkClickRecord> ShortLinkClicks => Set<ShortLinkClickRecord>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ArgumentNullException.ThrowIfNull(modelBuilder);
@@ -40,6 +42,35 @@ public sealed class ShortLinkDbContext : DbContext
             entity.HasIndex(link => link.CreatedAt);
             entity.HasIndex(link => link.ExpiresAt);
             entity.HasIndex(link => link.IsActive);
+        });
+
+        modelBuilder.Entity<ShortLinkClickRecord>(entity =>
+        {
+            entity.ToTable("short_link_clicks");
+            entity.HasKey(click => click.Id);
+
+            entity.Property(click => click.Id)
+                .ValueGeneratedOnAdd();
+
+            entity.Property(click => click.ShortCode)
+                .HasMaxLength(128)
+                .IsRequired();
+
+            entity.Property(click => click.ClickedAtUtc)
+                .IsRequired();
+
+            entity.Property(click => click.RemoteIpAddress)
+                .HasMaxLength(256);
+
+            entity.Property(click => click.UserAgent)
+                .HasMaxLength(1024);
+
+            entity.Property(click => click.Referrer)
+                .HasMaxLength(2048);
+
+            entity.HasIndex(click => click.ShortCode);
+            entity.HasIndex(click => click.ClickedAtUtc);
+            entity.HasIndex(click => new { click.ShortCode, click.ClickedAtUtc });
         });
     }
 }

@@ -100,14 +100,64 @@ public sealed class ShortLinkServiceTests
         Assert.Equal(ShortLinkErrorCodes.Inactive, resolveResult.ErrorCode);
     }
 
+    [Fact]
+    public async Task ResolveAsync_UsesCacheBeforeRepository()
+    {
+        var repository = new InMemoryShortLinkRepository();
+        var cache = new InMemoryShortLinkCache();
+        await cache.SetAsync(new ShortLink("cached1", new Uri("https://example.com/cached"), DateTimeOffset.UtcNow));
+        var service = CreateService(repository, cache: cache);
+
+        var result = await service.ResolveAsync("cached1");
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("https://example.com/cached", result.ShortLink?.OriginalUrl.AbsoluteUri.TrimEnd('/'));
+        Assert.Equal(0, repository.FindByCodeCallCount);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_CachesSuccessfulRepositoryLookup()
+    {
+        var repository = new InMemoryShortLinkRepository();
+        var cache = new InMemoryShortLinkCache();
+        await repository.AddAsync(new ShortLink("cacheme", new Uri("https://example.com/db"), DateTimeOffset.UtcNow));
+        var service = CreateService(repository, cache: cache);
+
+        var first = await service.ResolveAsync("cacheme");
+        var second = await service.ResolveAsync("cacheme");
+
+        Assert.True(first.Succeeded);
+        Assert.True(second.Succeeded);
+        Assert.Equal(1, repository.FindByCodeCallCount);
+        Assert.NotNull(await cache.FindByCodeAsync("cacheme"));
+    }
+
+    [Fact]
+    public async Task DeactivateAsync_RemovesCachedLink()
+    {
+        var repository = new InMemoryShortLinkRepository();
+        var cache = new InMemoryShortLinkCache();
+        var shortLink = new ShortLink("remove1", new Uri("https://example.com/remove"), DateTimeOffset.UtcNow);
+        await repository.AddAsync(shortLink);
+        await cache.SetAsync(shortLink);
+        var service = CreateService(repository, cache: cache);
+
+        var result = await service.DeactivateAsync("remove1");
+
+        Assert.True(result.Succeeded);
+        Assert.Null(await cache.FindByCodeAsync("remove1"));
+    }
+
     private static ShortLinkService CreateService(
         InMemoryShortLinkRepository? repository = null,
         IShortCodeGenerator? generator = null,
+        IShortLinkCache? cache = null,
         TimeProvider? timeProvider = null)
     {
         return new ShortLinkService(
             repository ?? new InMemoryShortLinkRepository(),
             generator ?? new SequenceCodeGenerator("abc1234"),
+            cache,
             timeProvider);
     }
 
@@ -115,8 +165,11 @@ public sealed class ShortLinkServiceTests
     {
         private readonly Dictionary<string, ShortLink> links = new(StringComparer.Ordinal);
 
+        public int FindByCodeCallCount { get; private set; }
+
         public Task<ShortLink?> FindByCodeAsync(string code, CancellationToken cancellationToken = default)
         {
+            FindByCodeCallCount++;
             links.TryGetValue(code, out var shortLink);
             return Task.FromResult(shortLink);
         }
@@ -133,6 +186,29 @@ public sealed class ShortLinkServiceTests
         public Task UpdateAsync(ShortLink shortLink, CancellationToken cancellationToken = default)
         {
             links[shortLink.Code] = shortLink;
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class InMemoryShortLinkCache : IShortLinkCache
+    {
+        private readonly Dictionary<string, ShortLink> links = new(StringComparer.Ordinal);
+
+        public Task<ShortLink?> FindByCodeAsync(string code, CancellationToken cancellationToken = default)
+        {
+            links.TryGetValue(code, out var shortLink);
+            return Task.FromResult(shortLink);
+        }
+
+        public Task SetAsync(ShortLink shortLink, CancellationToken cancellationToken = default)
+        {
+            links[shortLink.Code] = shortLink;
+            return Task.CompletedTask;
+        }
+
+        public Task RemoveAsync(string code, CancellationToken cancellationToken = default)
+        {
+            links.Remove(code);
             return Task.CompletedTask;
         }
     }

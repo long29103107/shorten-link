@@ -9,16 +9,19 @@ public sealed class ShortLinkService : IShortLinkService
     private const int MaxCodeGenerationAttempts = 10;
 
     private readonly IShortLinkRepository repository;
+    private readonly IShortLinkCache cache;
     private readonly IShortCodeGenerator codeGenerator;
     private readonly TimeProvider timeProvider;
 
     public ShortLinkService(
         IShortLinkRepository repository,
         IShortCodeGenerator codeGenerator,
+        IShortLinkCache? cache = null,
         TimeProvider? timeProvider = null)
     {
         this.repository = repository ?? throw new ArgumentNullException(nameof(repository));
         this.codeGenerator = codeGenerator ?? throw new ArgumentNullException(nameof(codeGenerator));
+        this.cache = cache ?? new DisabledShortLinkCache();
         this.timeProvider = timeProvider ?? TimeProvider.System;
     }
 
@@ -87,7 +90,15 @@ public sealed class ShortLinkService : IShortLinkService
             return ResolveShortLinkResult.Failure(validationFailure.Value.ErrorCode, validationFailure.Value.ErrorMessage);
         }
 
-        var shortLink = await repository.FindByCodeAsync(code.Trim(), cancellationToken).ConfigureAwait(false);
+        var normalizedCode = code.Trim();
+        var now = timeProvider.GetUtcNow();
+        var shortLink = await cache.FindByCodeAsync(normalizedCode, cancellationToken).ConfigureAwait(false);
+        if (shortLink is not null)
+        {
+            return await ResolveCachedAsync(shortLink, now, cancellationToken).ConfigureAwait(false);
+        }
+
+        shortLink = await repository.FindByCodeAsync(normalizedCode, cancellationToken).ConfigureAwait(false);
         if (shortLink is null)
         {
             return ResolveShortLinkResult.Failure(ShortLinkErrorCodes.NotFound, "Short link was not found.");
@@ -98,10 +109,12 @@ public sealed class ShortLinkService : IShortLinkService
             return ResolveShortLinkResult.Failure(ShortLinkErrorCodes.Inactive, "Short link is inactive.");
         }
 
-        if (shortLink.IsExpired(timeProvider.GetUtcNow()))
+        if (shortLink.IsExpired(now))
         {
             return ResolveShortLinkResult.Failure(ShortLinkErrorCodes.Expired, "Short link has expired.");
         }
+
+        await cache.SetAsync(shortLink, cancellationToken).ConfigureAwait(false);
 
         return ResolveShortLinkResult.Success(shortLink);
     }
@@ -140,8 +153,29 @@ public sealed class ShortLinkService : IShortLinkService
 
         shortLink.Deactivate();
         await repository.UpdateAsync(shortLink, cancellationToken).ConfigureAwait(false);
+        await cache.RemoveAsync(shortLink.Code, cancellationToken).ConfigureAwait(false);
 
         return DeactivateShortLinkResult.Success();
+    }
+
+    private async Task<ResolveShortLinkResult> ResolveCachedAsync(
+        ShortLink shortLink,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        if (!shortLink.IsActive)
+        {
+            await cache.RemoveAsync(shortLink.Code, cancellationToken).ConfigureAwait(false);
+            return ResolveShortLinkResult.Failure(ShortLinkErrorCodes.Inactive, "Short link is inactive.");
+        }
+
+        if (shortLink.IsExpired(now))
+        {
+            await cache.RemoveAsync(shortLink.Code, cancellationToken).ConfigureAwait(false);
+            return ResolveShortLinkResult.Failure(ShortLinkErrorCodes.Expired, "Short link has expired.");
+        }
+
+        return ResolveShortLinkResult.Success(shortLink);
     }
 
     private async Task<string?> GenerateUniqueCodeAsync(CancellationToken cancellationToken)

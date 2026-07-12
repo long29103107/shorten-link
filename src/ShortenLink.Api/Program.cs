@@ -14,6 +14,8 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.UseShortenLinkRateLimiting();
+
 app.MapShortenLinkEndpoints();
 
 app.MapGet("/api/health", () => Results.Ok(new

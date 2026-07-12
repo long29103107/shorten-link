@@ -1,8 +1,15 @@
+using System.Threading.Channels;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ShortenLink.Core.Generation;
 using ShortenLink.Core.Repositories;
@@ -35,6 +42,23 @@ public static class ShortenLinkServiceCollectionExtensions
             .Validate(
                 static options => IsValidFrontendFallbackPath(options.Redirect.FrontendFallbackPath),
                 "ShortenLink:Redirect:FrontendFallbackPath must be a root-relative path or an absolute HTTP/HTTPS URL.")
+            .Validate(
+                static options => options.Analytics.QueueCapacity > 0,
+                "ShortenLink:Analytics:QueueCapacity must be greater than 0.")
+            .Validate(
+                static options => IsValidCacheProvider(options.Cache),
+                "ShortenLink:Cache:Provider must be Memory or Redis.")
+            .Validate(
+                static options => options.Cache.EntryTtlSeconds > 0,
+                "ShortenLink:Cache:EntryTtlSeconds must be greater than 0.")
+            .Validate(
+                static options => !IsRedisCacheEnabled(options.Cache)
+                    || !string.IsNullOrWhiteSpace(options.Cache.RedisConnectionString),
+                "ShortenLink:Cache:RedisConnectionString is required when Redis cache is enabled.")
+            .Validate(
+                static options => HasValidRateLimit(options.RateLimiting.Create)
+                    && HasValidRateLimit(options.RateLimiting.Redirect),
+                "ShortenLink:RateLimiting create and redirect policies require PermitLimit > 0, WindowSeconds > 0, and QueueLimit >= 0.")
             .ValidateOnStart();
 
         services.AddDbContext<ShortLinkDbContext>((serviceProvider, options) =>
@@ -55,11 +79,113 @@ public static class ShortenLinkServiceCollectionExtensions
         services.TryAddSingleton<TimeProvider>(TimeProvider.System);
         services.TryAddSingleton<IShortCodeGenerator, Base62ShortCodeGenerator>();
         services.TryAddScoped<IShortLinkRepository, EfCoreShortLinkRepository>();
+        services.TryAddScoped<IShortLinkClickRepository, EfCoreShortLinkClickRepository>();
         services.TryAddScoped<IShortLinkService, ShortLinkService>();
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<IHostedService, ShortLinkDatabaseInitializationService>());
 
+        RegisterCache(services, configuration);
+        RegisterRateLimiting(services);
+        RegisterAnalytics(services);
+
         return services;
+    }
+
+    private static void RegisterRateLimiting(IServiceCollection services)
+    {
+        services.AddRateLimiter(options =>
+        {
+            options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            options.AddPolicy(
+                ShortenLinkRateLimitingPolicyNames.Create,
+                httpContext => CreateFixedWindowPartition(
+                    httpContext,
+                    httpContext.RequestServices
+                        .GetRequiredService<IOptions<ShortenLinkOptions>>()
+                        .Value
+                        .RateLimiting
+                        .Create));
+            options.AddPolicy(
+                ShortenLinkRateLimitingPolicyNames.Redirect,
+                httpContext => CreateFixedWindowPartition(
+                    httpContext,
+                    httpContext.RequestServices
+                        .GetRequiredService<IOptions<ShortenLinkOptions>>()
+                        .Value
+                        .RateLimiting
+                        .Redirect));
+        });
+    }
+
+    private static void RegisterCache(IServiceCollection services, IConfiguration configuration)
+    {
+        var cacheOptions = configuration
+            .GetSection(ShortenLinkOptions.SectionName)
+            .Get<ShortenLinkOptions>()
+            ?.Cache ?? new ShortenLinkCacheOptions();
+
+        if (!cacheOptions.Enabled)
+        {
+            services.TryAddSingleton<IShortLinkCache, DisabledShortLinkCache>();
+            return;
+        }
+
+        if (IsRedisCacheEnabled(cacheOptions))
+        {
+            services.AddStackExchangeRedisCache(options =>
+            {
+                options.Configuration = cacheOptions.RedisConnectionString;
+                options.InstanceName = "ShortenLink:";
+            });
+        }
+        else
+        {
+            services.AddDistributedMemoryCache();
+        }
+
+        services.TryAddSingleton<IShortLinkCache, DistributedShortLinkCache>();
+    }
+
+    private static void RegisterAnalytics(IServiceCollection services)
+    {
+        services.TryAddSingleton(serviceProvider =>
+        {
+            var analyticsOptions = serviceProvider
+                .GetRequiredService<IOptions<ShortenLinkOptions>>()
+                .Value
+                .Analytics;
+
+            return Channel.CreateBounded<RecordShortLinkClickRequest>(new BoundedChannelOptions(analyticsOptions.QueueCapacity)
+            {
+                SingleReader = true,
+                SingleWriter = false,
+                FullMode = BoundedChannelFullMode.DropWrite
+            });
+        });
+        services.TryAddScoped<IShortLinkClickRecorder>(serviceProvider =>
+        {
+            var analyticsOptions = serviceProvider
+                .GetRequiredService<IOptions<ShortenLinkOptions>>()
+                .Value
+                .Analytics;
+
+            if (!analyticsOptions.Enabled)
+            {
+                return new DisabledShortLinkClickRecorder();
+            }
+
+            if (!analyticsOptions.UseAsyncWorker)
+            {
+                return new SynchronousShortLinkClickRecorder(
+                    serviceProvider.GetRequiredService<IShortLinkClickRepository>());
+            }
+
+            return new ChannelShortLinkClickRecorder(
+                serviceProvider.GetRequiredService<Channel<RecordShortLinkClickRequest>>(),
+                serviceProvider.GetRequiredService<ILogger<ChannelShortLinkClickRecorder>>());
+        });
+        services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<IHostedService, ShortLinkClickBackgroundService>());
     }
 
     private static bool IsValidFrontendFallbackPath(string? fallbackPath)
@@ -86,5 +212,49 @@ public static class ShortenLinkServiceCollectionExtensions
         return databaseOptions.UsePostgres
             ? !string.IsNullOrWhiteSpace(databaseOptions.PostgresConnectionString)
             : !string.IsNullOrWhiteSpace(databaseOptions.SqliteConnectionString);
+    }
+
+    private static bool IsValidCacheProvider(ShortenLinkCacheOptions cacheOptions)
+    {
+        ArgumentNullException.ThrowIfNull(cacheOptions);
+
+        return cacheOptions.Provider.Equals("Memory", StringComparison.OrdinalIgnoreCase)
+            || cacheOptions.Provider.Equals("Redis", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsRedisCacheEnabled(ShortenLinkCacheOptions cacheOptions)
+    {
+        ArgumentNullException.ThrowIfNull(cacheOptions);
+
+        return cacheOptions.Enabled
+            && cacheOptions.Provider.Equals("Redis", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static RateLimitPartition<string> CreateFixedWindowPartition(
+        HttpContext httpContext,
+        ShortenLinkFixedWindowRateLimitOptions options)
+    {
+        var partitionKey = httpContext.Connection.RemoteIpAddress?.ToString()
+            ?? httpContext.Request.Headers.Host.ToString()
+            ?? "anonymous";
+
+        return RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey,
+            _ => new FixedWindowRateLimiterOptions
+            {
+                AutoReplenishment = true,
+                PermitLimit = options.PermitLimit,
+                QueueLimit = options.QueueLimit,
+                Window = TimeSpan.FromSeconds(options.WindowSeconds)
+            });
+    }
+
+    private static bool HasValidRateLimit(ShortenLinkFixedWindowRateLimitOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        return options.PermitLimit > 0
+            && options.WindowSeconds > 0
+            && options.QueueLimit >= 0;
     }
 }

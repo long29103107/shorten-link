@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using ShortenLink.Core;
 using ShortenLink.Core.Domain;
@@ -18,7 +20,7 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
         var shortLinks = endpoints.MapGroup("/api/short-links")
             .WithTags("Short Links");
 
-        shortLinks.MapPost("/", CreateShortLinkAsync)
+        var createEndpoint = shortLinks.MapPost("/", CreateShortLinkAsync)
             .WithName("CreateShortLink");
 
         shortLinks.MapGet("/{code}", GetShortLinkDetailsAsync)
@@ -27,8 +29,17 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
         shortLinks.MapDelete("/{code}", DeactivateShortLinkAsync)
             .WithName("DeactivateShortLink");
 
-        endpoints.MapGet("/{code}", RedirectShortLinkAsync)
+        var redirectEndpoint = endpoints.MapGet("/{code}", RedirectShortLinkAsync)
             .WithName("RedirectShortLink");
+
+        var options = endpoints.ServiceProvider
+            .GetRequiredService<IOptions<ShortenLinkOptions>>()
+            .Value;
+        if (options.RateLimiting.Enabled)
+        {
+            createEndpoint.RequireRateLimiting(ShortenLinkRateLimitingPolicyNames.Create);
+            redirectEndpoint.RequireRateLimiting(ShortenLinkRateLimitingPolicyNames.Redirect);
+        }
 
         return endpoints;
     }
@@ -89,12 +100,24 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
     private static async Task<IResult> RedirectShortLinkAsync(
         string code,
         IShortLinkService shortLinkService,
+        IShortLinkClickRecorder shortLinkClickRecorder,
         IOptions<ShortenLinkOptions> options,
+        TimeProvider timeProvider,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
         var result = await shortLinkService.ResolveAsync(code, cancellationToken).ConfigureAwait(false);
         if (result.Succeeded && result.ShortLink is not null)
         {
+            await shortLinkClickRecorder.RecordAsync(
+                new RecordShortLinkClickRequest(
+                    result.ShortLink.Code,
+                    timeProvider.GetUtcNow(),
+                    httpContext.Connection.RemoteIpAddress?.ToString(),
+                    httpContext.Request.Headers.UserAgent.ToString(),
+                    httpContext.Request.Headers.Referer.ToString()),
+                cancellationToken).ConfigureAwait(false);
+
             return TypedResults.Redirect(result.ShortLink.OriginalUrl.AbsoluteUri);
         }
 
