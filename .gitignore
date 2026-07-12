@@ -8,6 +8,7 @@ coverage.*
 *.trx
 *.coverage
 *.coveragexml
+.tmp/
 
 # NuGet/package output
 *.nupkg

@@ -1,0 +1,70 @@
+name: shorten-link
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: shorten-link-postgres
+    environment:
+      POSTGRES_DB: shorten_link
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d shorten_link"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: shorten-link-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - redis-data:/data
+
+  api:
+    build:
+      context: .
+      dockerfile: src/ShortenLink.Api/Dockerfile
+    container_name: shorten-link-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ShortenLink__BaseUrl: http://localhost:5188/
+      ShortenLink__Database__UsePostgres: "true"
+      ShortenLink__Database__PostgresConnectionString: Host=postgres;Port=5432;Database=shorten_link;Username=postgres;Password=postgres
+      ShortenLink__Redirect__EnableFrontendFallback: "false"
+      ShortenLink__Analytics__Enabled: "true"
+      ShortenLink__Analytics__UseAsyncWorker: "true"
+      ShortenLink__Analytics__QueueCapacity: "512"
+      ShortenLink__Cache__Enabled: "true"
+      ShortenLink__Cache__Provider: Redis
+      ShortenLink__Cache__RedisConnectionString: redis:6379
+      ShortenLink__Cache__EntryTtlSeconds: "3600"
+      ShortenLink__RateLimiting__Enabled: "true"
+      ShortenLink__RateLimiting__Create__PermitLimit: "60"
+      ShortenLink__RateLimiting__Create__WindowSeconds: "60"
+      ShortenLink__RateLimiting__Create__QueueLimit: "0"
+      ShortenLink__RateLimiting__Redirect__PermitLimit: "120"
+      ShortenLink__RateLimiting__Redirect__WindowSeconds: "60"
+      ShortenLink__RateLimiting__Redirect__QueueLimit: "0"
+    ports:
+      - "5188:8080"
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  redis-data:

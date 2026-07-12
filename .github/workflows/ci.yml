@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  build-test-pack:
+    name: Build, test, and pack
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore ShortenLink.slnx
+
+      - name: Build
+        run: dotnet build ShortenLink.slnx --no-restore --verbosity minimal
+
+      - name: Test
+        run: dotnet test ShortenLink.slnx --no-build --verbosity minimal
+
+      - name: Pack
+        run: dotnet pack ShortenLink.slnx -c Release --no-restore --verbosity minimal

@@ -76,6 +76,22 @@ dotnet pack ShortenLink.slnx -c Release
 
 Most ASP.NET Core consumers should start with `ShortenLink.AspNetCore`. That package is the host-facing entry point for dependency injection and endpoint mapping. It brings the lower-level reusable projects with it through package/project references.
 
+### Consumer Package Smoke
+
+To validate the package from a clean consumer app shape, run:
+
+```powershell
+.\scripts\smoke-consumer-package.ps1
+```
+
+The smoke script packs the reusable packages into a temporary local NuGet source, creates a clean ASP.NET Core app under `.tmp`, installs `ShortenLink.AspNetCore`, maps the library endpoints, runs SQLite default mode, and verifies create, detail, redirect, and deactivate behavior. It does not reference `ShortenLink.Api`, and it does not require PostgreSQL, Redis, Docker, frontend assets, credentials, or package publishing.
+
+Keep the generated consumer app and local package source for inspection when needed:
+
+```powershell
+.\scripts\smoke-consumer-package.ps1 -KeepArtifacts
+```
+
 ### Option 1: Project Reference During Local Development
 
 From the consumer app directory:
@@ -397,3 +413,103 @@ The smoke script:
 - returns a JSON summary on success
 
 When PostgreSQL is not reachable, the script fails early with a concrete blocker message instead of pretending the host smoke passed.
+
+## Local Operational Stack With Docker Compose
+
+Phase 3 now includes an optional Docker Compose path for the demo API plus its operational dependencies:
+
+- PostgreSQL for the configured database provider
+- Redis for redirect cache
+- async click analytics enabled by configuration
+- endpoint rate limiting enabled by configuration
+
+This stack is optional. The default non-Docker SQLite developer flow still works exactly as before.
+
+### Start The Stack
+
+From the repository root:
+
+```powershell
+docker compose up -d --build
+```
+
+The composed stack exposes:
+
+- API: `http://localhost:5188`
+- PostgreSQL: `localhost:5432`
+- Redis: `localhost:6379`
+
+The compose path configures the API with environment variables only:
+
+- `ShortenLink__Database__UsePostgres=true`
+- `ShortenLink__Database__PostgresConnectionString=Host=postgres;Port=5432;Database=shorten_link;Username=postgres;Password=postgres`
+- `ShortenLink__Cache__Enabled=true`
+- `ShortenLink__Cache__Provider=Redis`
+- `ShortenLink__Cache__RedisConnectionString=redis:6379`
+- `ShortenLink__Analytics__Enabled=true`
+- `ShortenLink__Analytics__UseAsyncWorker=true`
+- `ShortenLink__RateLimiting__Enabled=true`
+
+That keeps provider selection and operational behavior in configuration instead of application code.
+
+### Stop The Stack
+
+```powershell
+docker compose down
+```
+
+To remove the PostgreSQL and Redis volumes as well:
+
+```powershell
+docker compose down -v
+```
+
+### Smoke Check The Stack
+
+For a repeatable compose-backed smoke run:
+
+```powershell
+.\scripts\smoke-docker-compose.ps1
+```
+
+The script:
+
+- validates the compose file with `docker compose config`
+- starts the stack with `docker compose up -d --build`
+- waits for `GET /api/health`
+- verifies create, redirect, detail, and deactivate behavior
+- shuts the stack down with `docker compose down -v`
+- returns a JSON summary on success
+
+Keep the stack running after the smoke when needed:
+
+```powershell
+.\scripts\smoke-docker-compose.ps1 -KeepRunning
+```
+
+Point the smoke script at a different compose file or API URL when needed:
+
+```powershell
+.\scripts\smoke-docker-compose.ps1 -ComposeFile .\compose.yml -ApiUrl http://127.0.0.1:5188
+```
+
+### Default SQLite Path Still Works
+
+Docker Compose does not replace the default local path. Outside Docker, leave:
+
+```json
+{
+  "ShortenLink": {
+    "Database": {
+      "UsePostgres": false,
+      "SqliteConnectionString": "Data Source=shorten-link.db"
+    }
+  }
+}
+```
+
+Then continue using the normal local host flow:
+
+```powershell
+dotnet run --project src\ShortenLink.Api\ShortenLink.Api.csproj --launch-profile https
+```
