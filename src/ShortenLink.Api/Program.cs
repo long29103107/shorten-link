@@ -24,3 +24,5 @@ app.MapGet("/api/health", () => Results.Ok(new
 .WithName("Health");
 
 app.Run();
+
+public partial class Program;

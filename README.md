@@ -148,7 +148,7 @@ Minimum `appsettings.json` configuration for SQLite default mode:
 After the core service task lands, application services can depend on the reusable `IShortLinkService` contract directly. The intended shape is:
 
 ```csharp
-using ShortenLink.Core;
+using ShortenLink.Core.Services;
 
 public sealed class MyLinkService
 {
@@ -159,19 +159,18 @@ public sealed class MyLinkService
         _shortLinkService = shortLinkService;
     }
 
-    public Task<ShortLinkResult> CreateAsync(string url, CancellationToken cancellationToken = default)
+    public Task<CreateShortLinkResult> CreateAsync(string url, CancellationToken cancellationToken = default)
     {
-        return _shortLinkService.CreateAsync(new CreateShortLinkRequest
-        {
-            OriginalUrl = url
-        }, cancellationToken);
+        return _shortLinkService.CreateAsync(
+            new CreateShortLinkRequest(url),
+            cancellationToken);
     }
 }
 ```
 
-`IShortLinkService`, `CreateShortLinkRequest`, and `ShortLinkResult` are part of the planned Phase 001 core-contract implementation. This task establishes how consumers will use those contracts without moving the implementation into the demo API.
+`IShortLinkService`, `CreateShortLinkRequest`, and `CreateShortLinkResult` live in `ShortenLink.Core.Services`. Consumer code should continue to call the reusable service contract instead of re-creating short-link rules in the host app.
 
-## Demo API Swagger
+## Demo API Swagger And Demo UI
 
 The demo API uses Swashbuckle for development-time Swagger/OpenAPI.
 
@@ -185,15 +184,51 @@ Open:
 http://localhost:5188/swagger
 ```
 
-The current scaffold exposes `/api/health`. Short-link endpoints will appear here as later Phase 001 tasks implement them.
+The API now exposes:
 
-## Frontend Scaffold
+- `POST /api/short-links`
+- `GET /api/short-links/{code}`
+- `DELETE /api/short-links/{code}`
+- `GET /{code}`
+- `GET /api/health`
 
-The React/Vite frontend scaffold is present under `src/ShortenLink.Web`.
+In development, `src\ShortenLink.Api\appsettings.Development.json` overrides `ShortenLink:BaseUrl` to `https://localhost:7154` so returned short URLs line up with the launch profile.
+
+## Frontend Demo
+
+The React + Vite demo app now provides the Phase 001 create, copy, detail, deactivate, and fallback flow.
+
+Start the API in one terminal:
+
+```powershell
+dotnet run --project src\ShortenLink.Api\ShortenLink.Api.csproj
+```
+
+Then start the frontend in another:
 
 ```powershell
 cd .\src\ShortenLink.Web
 npm install
+npm run dev
+```
+
+Open:
+
+```text
+http://localhost:5173
+```
+
+The Vite dev server proxies `/api/*` requests to `http://localhost:5188` by default. Override that target when needed:
+
+```powershell
+$env:SHORTENLINK_API_PROXY_TARGET = "http://localhost:5188"
+npm run dev
+```
+
+For a production-style frontend build:
+
+```powershell
+cd .\src\ShortenLink.Web
 npm run build
 ```
 

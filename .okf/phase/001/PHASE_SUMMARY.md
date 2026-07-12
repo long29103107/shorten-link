@@ -3,10 +3,10 @@ phase: 001
 title: MVP Library And Demo Flow
 status: active
 created_at: 2026-07-09
-updated_at: 2026-07-09
+updated_at: 2026-07-12
 current_task: null
-task_count: 3
-done_count: 3
+task_count: 7
+done_count: 7
 depends_on: []
 ---
 
@@ -59,6 +59,10 @@ Out:
 | 001_001 | Solution and NuGet package boundary scaffold | done | 2026-07-09 |
 | 001_002 | NuGet package build and consumer usage guide | done | 2026-07-09 |
 | 001_003 | Demo API Swagger/OpenAPI | done | 2026-07-09 |
+| 001_004 | Core domain contracts and validation MVP | done | 2026-07-11 |
+| 001_005 | SQLite repository persistence MVP | done | 2026-07-11 |
+| 001_006 | ASP.NET Core DI and short-link endpoints MVP | done | 2026-07-12 |
+| 001_007 | React create/detail/fallback demo flow | done | 2026-07-12 |
 
 ## Current Task
 
@@ -69,10 +73,14 @@ No task is active.
 - `001_001` completed on 2026-07-09. Created the .NET solution, reusable library projects, demo API, React/Vite scaffold, test placeholders, package metadata, placeholder host integration extensions, README setup notes, and verified build/pack/reference direction.
 - `001_002` completed on 2026-07-09. Expanded README with maintainer build/pack commands, local NuGet feed usage, project-reference usage, consumer `Program.cs` setup, minimum SQLite config, package output paths, and intended direct `IShortLinkService` usage.
 - `001_003` completed on 2026-07-09. Added Swashbuckle Swagger/OpenAPI to the demo API only, documented `/swagger`, verified build, Swagger UI, Swagger JSON, and `/api/health`.
+- `001_004` completed on 2026-07-11. Added reusable core domain/contracts, Base62 code generation, alias and URL validation, repository/service interfaces, validation-focused service behavior, and 28 passing core tests.
+- `001_005` completed on 2026-07-11. Added EF Core SQLite persistence, `ShortLinkDbContext`, SQLite-backed `IShortLinkRepository`, required indexes, duplicate-code database enforcement, and 5 passing SQLite integration tests.
+- `001_006` completed on 2026-07-12. Added reusable ASP.NET Core options/DI wiring, SQLite database initialization, create/detail/deactivate/redirect endpoint mapping, stable error payloads, and 8 passing API integration tests against a SQLite-backed host.
+- `001_007` completed on 2026-07-12. Replaced the frontend scaffold with a real React demo flow for create/result/detail/deactivate/fallback behavior, added feature-scoped API modules, updated Vite proxy/dev config, and verified the production frontend build.
 
 ## Next Task Proposal
 
-Create `001_004 - Core domain contracts and validation MVP` next. It should add the real `ShortLink`, request/result DTOs, `IShortLinkService`, `IShortCodeGenerator`, `IShortLinkRepository`, Base62 generator, alias validation, URL validation, and focused core tests.
+Create `001_008 - Phase 001 end-to-end smoke closure` next. It should run the API and frontend together, confirm the browser-level create/detail/deactivate/fallback journey against the real local stack, then either close Phase 001 or document the last gap that blocks closure.
 
 ## Scan Rule
 
