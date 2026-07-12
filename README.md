@@ -133,7 +133,8 @@ Minimum `appsettings.json` configuration for SQLite default mode:
     "BaseUrl": "https://localhost:5001",
     "Database": {
       "UsePostgres": false,
-      "SqliteConnectionString": "Data Source=shorten-link.db"
+      "SqliteConnectionString": "Data Source=shorten-link.db",
+      "PostgresConnectionString": "Host=localhost;Port=5432;Database=shorten_link;Username=postgres;Password=postgres"
     },
     "Redirect": {
       "EnableFrontendFallback": true,
@@ -168,6 +169,21 @@ public sealed class MyLinkService
 }
 ```
 
+Switch to PostgreSQL by configuration only:
+
+```json
+{
+  "ShortenLink": {
+    "Database": {
+      "UsePostgres": true,
+      "PostgresConnectionString": "Host=localhost;Port=5432;Database=shorten_link;Username=postgres;Password=postgres"
+    }
+  }
+}
+```
+
+The demo host still uses `AddShortenLink(builder.Configuration);` with no application-code changes. On startup it calls `EnsureCreated()` for the selected provider, so SQLite remains the default local path while PostgreSQL can be enabled with a valid connection string.
+
 `IShortLinkService`, `CreateShortLinkRequest`, and `CreateShortLinkResult` live in `ShortenLink.Core.Services`. Consumer code should continue to call the reusable service contract instead of re-creating short-link rules in the host app.
 
 ## Demo API Swagger And Demo UI
@@ -175,13 +191,13 @@ public sealed class MyLinkService
 The demo API uses Swashbuckle for development-time Swagger/OpenAPI.
 
 ```powershell
-dotnet run --project src\ShortenLink.Api\ShortenLink.Api.csproj
+dotnet run --project src\ShortenLink.Api\ShortenLink.Api.csproj --launch-profile https
 ```
 
 Open:
 
 ```text
-http://localhost:5188/swagger
+https://localhost:7154/swagger
 ```
 
 The API now exposes:
@@ -192,7 +208,7 @@ The API now exposes:
 - `GET /{code}`
 - `GET /api/health`
 
-In development, `src\ShortenLink.Api\appsettings.Development.json` overrides `ShortenLink:BaseUrl` to `https://localhost:7154` so returned short URLs line up with the launch profile.
+In development, `src\ShortenLink.Api\appsettings.Development.json` overrides `ShortenLink:BaseUrl` to `https://localhost:7154` and sets `ShortenLink:Redirect:FrontendFallbackPath` to `http://localhost:5173/not-found` so returned short URLs and unknown-code fallback both line up with the local split API + Vite setup.
 
 ## Frontend Demo
 
@@ -201,8 +217,10 @@ The React + Vite demo app now provides the Phase 001 create, copy, detail, deact
 Start the API in one terminal:
 
 ```powershell
-dotnet run --project src\ShortenLink.Api\ShortenLink.Api.csproj
+dotnet run --project src\ShortenLink.Api\ShortenLink.Api.csproj --launch-profile https
 ```
+
+The `https` launch profile keeps both `https://localhost:7154` and `http://localhost:5188` available, so the returned short URLs and the Vite proxy target both work during local development and smoke runs.
 
 Then start the frontend in another:
 
@@ -233,3 +251,12 @@ npm run build
 ```
 
 Dependencies are not vendored in this repo.
+
+## PostgreSQL Notes
+
+Phase 2 adds configuration-driven provider selection to the reusable library boundary:
+
+- Leave `ShortenLink:Database:UsePostgres` as `false` to keep SQLite as the default provider.
+- Set `ShortenLink:Database:UsePostgres` to `true` and provide `ShortenLink:Database:PostgresConnectionString` to switch the same host and library code to PostgreSQL.
+- The reusable API, repository, and service contracts do not change between providers.
+- `dotnet pack ShortenLink.slnx -c Release` still produces the same reusable packages; provider choice stays in configuration.

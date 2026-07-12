@@ -1,12 +1,12 @@
 ---
 phase: 002
 title: PostgreSQL Provider Toggle
-status: planned
 created_at: 2026-07-09
-updated_at: 2026-07-09
+updated_at: 2026-07-12
+status: active
 current_task: null
-task_count: 0
-done_count: 0
+task_count: 1
+done_count: 1
 depends_on:
   - 001
 ---
@@ -48,18 +48,19 @@ Out:
 
 | Task | Title | Status | Done At |
 |---|---|---|---|
+| 002_001 | PostgreSQL provider toggle MVP | done | 2026-07-12 |
 
 ## Current Task
 
-No task is active. Phase 002 starts after Phase 001 done criteria are verified.
+No task is active.
 
 ## Completed Notes
 
-No phase tasks are complete yet.
+- `002_001` completed on 2026-07-12. Added configuration-driven PostgreSQL provider selection to the reusable library boundary, extended options validation and DbContext wiring, added provider-selection and PostgreSQL-model tests, and updated README PostgreSQL guidance while keeping SQLite as the default path.
 
 ## Next Task Proposal
 
-Create `002_001 - PostgreSQL provider toggle MVP` after Phase 001 is complete.
+Propose `002_002 - PostgreSQL live host smoke and setup guide` next. It should run the demo host against a real PostgreSQL instance where the environment allows, verify startup and short-link flows with `UsePostgres = true`, and finish the remaining PostgreSQL setup/run documentation needed to close Phase 002.
 
 ## Scan Rule
 

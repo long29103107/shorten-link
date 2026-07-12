@@ -1,12 +1,12 @@
 ---
 phase: 001
 title: MVP Library And Demo Flow
-status: active
+status: complete
 created_at: 2026-07-09
 updated_at: 2026-07-12
 current_task: null
-task_count: 7
-done_count: 7
+task_count: 8
+done_count: 8
 depends_on: []
 ---
 
@@ -63,10 +63,11 @@ Out:
 | 001_005 | SQLite repository persistence MVP | done | 2026-07-11 |
 | 001_006 | ASP.NET Core DI and short-link endpoints MVP | done | 2026-07-12 |
 | 001_007 | React create/detail/fallback demo flow | done | 2026-07-12 |
+| 001_008 | Phase 001 end-to-end smoke closure | done | 2026-07-12 |
 
 ## Current Task
 
-No task is active.
+No task is active. Phase 001 is complete.
 
 ## Completed Notes
 
@@ -77,10 +78,11 @@ No task is active.
 - `001_005` completed on 2026-07-11. Added EF Core SQLite persistence, `ShortLinkDbContext`, SQLite-backed `IShortLinkRepository`, required indexes, duplicate-code database enforcement, and 5 passing SQLite integration tests.
 - `001_006` completed on 2026-07-12. Added reusable ASP.NET Core options/DI wiring, SQLite database initialization, create/detail/deactivate/redirect endpoint mapping, stable error payloads, and 8 passing API integration tests against a SQLite-backed host.
 - `001_007` completed on 2026-07-12. Replaced the frontend scaffold with a real React demo flow for create/result/detail/deactivate/fallback behavior, added feature-scoped API modules, updated Vite proxy/dev config, and verified the production frontend build.
+- `001_008` completed on 2026-07-12. Verified the end-to-end local API + React flow with real browser smoke, updated local run guidance to use the API `https` launch profile, fixed development fallback routing so unknown short codes land on the React fallback page, and confirmed Phase 001 closure with build, test, and pack evidence.
 
 ## Next Task Proposal
 
-Create `001_008 - Phase 001 end-to-end smoke closure` next. It should run the API and frontend together, confirm the browser-level create/detail/deactivate/fallback journey against the real local stack, then either close Phase 001 or document the last gap that blocks closure.
+Create `002_001 - PostgreSQL provider toggle MVP` next.
 
 ## Scan Rule
 

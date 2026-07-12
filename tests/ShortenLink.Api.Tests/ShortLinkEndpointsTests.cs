@@ -1,10 +1,14 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using ShortenLink.Api;
+using ShortenLink.AspNetCore;
+using ShortenLink.Infrastructure.Persistence;
 using Xunit;
 
 namespace ShortenLink.Api.Tests;
@@ -167,6 +171,23 @@ public sealed class ShortLinkEndpointsTests
     }
 
     [Fact]
+    public async Task UnknownCode_RedirectsToAbsoluteFrontendFallbackWhenConfigured()
+    {
+        await using var factory = new ShortLinkApiFactory(
+            enableFrontendFallback: true,
+            frontendFallbackPath: "http://localhost:5173/not-found");
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        using var response = await client.GetAsync("/missing");
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("http://localhost:5173/not-found", response.Headers.Location?.AbsoluteUri);
+    }
+
+    [Fact]
     public async Task UnknownCode_ReturnsJson404WhenFrontendFallbackDisabled()
     {
         await using var factory = new ShortLinkApiFactory(enableFrontendFallback: false);
@@ -183,14 +204,67 @@ public sealed class ShortLinkEndpointsTests
         Assert.Equal("not_found", payload.ErrorCode);
     }
 
+    [Fact]
+    public void AddShortenLink_UsesSqliteProviderByDefault()
+    {
+        using var services = BuildServiceProvider(new Dictionary<string, string?>
+        {
+            ["ShortenLink:Database:UsePostgres"] = "false",
+            ["ShortenLink:Database:SqliteConnectionString"] = "Data Source=provider-sqlite.db"
+        });
+
+        using var scope = services.CreateScope();
+        var options = scope.ServiceProvider.GetRequiredService<IOptions<ShortenLinkOptions>>().Value;
+        var dbContext = scope.ServiceProvider.GetRequiredService<ShortLinkDbContext>();
+
+        Assert.False(options.Database.UsePostgres);
+        Assert.Equal("Microsoft.EntityFrameworkCore.Sqlite", dbContext.Database.ProviderName);
+    }
+
+    [Fact]
+    public void AddShortenLink_UsesPostgresProviderWhenEnabled()
+    {
+        using var services = BuildServiceProvider(new Dictionary<string, string?>
+        {
+            ["ShortenLink:Database:UsePostgres"] = "true",
+            ["ShortenLink:Database:PostgresConnectionString"] = "Host=localhost;Port=5432;Database=shorten_link_tests;Username=postgres;Password=postgres"
+        });
+
+        using var scope = services.CreateScope();
+        var options = scope.ServiceProvider.GetRequiredService<IOptions<ShortenLinkOptions>>().Value;
+        var dbContext = scope.ServiceProvider.GetRequiredService<ShortLinkDbContext>();
+
+        Assert.True(options.Database.UsePostgres);
+        Assert.Equal("Npgsql.EntityFrameworkCore.PostgreSQL", dbContext.Database.ProviderName);
+    }
+
+    [Fact]
+    public void AddShortenLink_RejectsMissingPostgresConnectionStringWhenEnabled()
+    {
+        using var services = BuildServiceProvider(new Dictionary<string, string?>
+        {
+            ["ShortenLink:Database:UsePostgres"] = "true",
+            ["ShortenLink:Database:PostgresConnectionString"] = ""
+        });
+
+        using var scope = services.CreateScope();
+
+        var exception = Assert.Throws<OptionsValidationException>(() =>
+            _ = scope.ServiceProvider.GetRequiredService<IOptions<ShortenLinkOptions>>().Value);
+
+        Assert.Contains("PostgresConnectionString", exception.Message, StringComparison.Ordinal);
+    }
+
     private sealed class ShortLinkApiFactory : WebApplicationFactory<Program>, IAsyncDisposable
     {
         private readonly string databaseDirectory = Path.Combine(Path.GetTempPath(), $"shorten-link-api-tests-{Guid.NewGuid():N}");
         private readonly bool enableFrontendFallback;
+        private readonly string frontendFallbackPath;
 
-        public ShortLinkApiFactory(bool enableFrontendFallback)
+        public ShortLinkApiFactory(bool enableFrontendFallback, string frontendFallbackPath = "/not-found")
         {
             this.enableFrontendFallback = enableFrontendFallback;
+            this.frontendFallbackPath = frontendFallbackPath;
         }
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -206,7 +280,7 @@ public sealed class ShortLinkEndpointsTests
                     ["ShortenLink:Database:UsePostgres"] = "false",
                     ["ShortenLink:Database:SqliteConnectionString"] = $"Data Source={Path.Combine(databaseDirectory, "app.db")}",
                     ["ShortenLink:Redirect:EnableFrontendFallback"] = enableFrontendFallback.ToString(),
-                    ["ShortenLink:Redirect:FrontendFallbackPath"] = "/not-found"
+                    ["ShortenLink:Redirect:FrontendFallbackPath"] = frontendFallbackPath
                 });
             });
             builder.ConfigureServices(services =>
@@ -221,6 +295,27 @@ public sealed class ShortLinkEndpointsTests
             base.Dispose();
             return ValueTask.CompletedTask;
         }
+    }
+
+    private static ServiceProvider BuildServiceProvider(IDictionary<string, string?> overrides)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ShortenLink:BaseUrl"] = "https://sho.rt",
+                ["ShortenLink:Database:UsePostgres"] = "false",
+                ["ShortenLink:Database:SqliteConnectionString"] = "Data Source=shorten-link-provider-tests.db",
+                ["ShortenLink:Redirect:EnableFrontendFallback"] = "true",
+                ["ShortenLink:Redirect:FrontendFallbackPath"] = "/not-found"
+            })
+            .AddInMemoryCollection(overrides)
+            .Build();
+
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddShortenLink(configuration);
+
+        return services.BuildServiceProvider();
     }
 
     private sealed class FixedTimeProvider : TimeProvider

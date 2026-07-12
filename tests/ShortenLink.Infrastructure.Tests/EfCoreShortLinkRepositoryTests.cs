@@ -83,6 +83,30 @@ public sealed class EfCoreShortLinkRepositoryTests
         Assert.Contains("IX_short_links_IsActive", indexes);
     }
 
+    [Fact]
+    public void Model_WithPostgresProvider_KeepsExpectedIndexes()
+    {
+        var options = new DbContextOptionsBuilder<ShortLinkDbContext>()
+            .UseNpgsql("Host=localhost;Port=5432;Database=shorten_link_tests;Username=postgres;Password=postgres")
+            .Options;
+
+        using var context = new ShortLinkDbContext(options);
+        var entityType = context.Model.FindEntityType(typeof(ShortLinkRecord));
+
+        Assert.NotNull(entityType);
+
+        var indexNames = entityType!
+            .GetIndexes()
+            .Select(index => index.GetDatabaseName())
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .ToHashSet(StringComparer.Ordinal);
+
+        Assert.Contains("IX_short_links_Code", indexNames);
+        Assert.Contains("IX_short_links_CreatedAt", indexNames);
+        Assert.Contains("IX_short_links_ExpiresAt", indexNames);
+        Assert.Contains("IX_short_links_IsActive", indexNames);
+    }
+
     private sealed class SqliteTestDatabase : IAsyncDisposable
     {
         private readonly SqliteConnection connection;

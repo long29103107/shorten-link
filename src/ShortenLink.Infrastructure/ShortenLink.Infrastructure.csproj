@@ -1,6 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.9" />
     <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.50.3" />
     <ProjectReference Include="..\ShortenLink.Core\ShortenLink.Core.csproj" />
@@ -15,7 +16,7 @@
     <Title>ShortenLink.Infrastructure</Title>
     <Description>Infrastructure adapters for ShortenLink persistence and provider integration.</Description>
     <Authors>ShortenLink Contributors</Authors>
-    <PackageTags>short-link;url-shortener;dotnet;ef-core;sqlite</PackageTags>
+    <PackageTags>short-link;url-shortener;dotnet;ef-core;sqlite;postgresql</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryUrl>https://example.com/shorten-link</RepositoryUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>

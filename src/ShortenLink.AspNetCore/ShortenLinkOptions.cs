@@ -16,6 +16,8 @@ public sealed class ShortenLinkDatabaseOptions
     public bool UsePostgres { get; set; }
 
     public string SqliteConnectionString { get; set; } = "Data Source=shorten-link.db";
+
+    public string PostgresConnectionString { get; set; } = string.Empty;
 }
 
 public sealed class ShortenLinkRedirectOptions
