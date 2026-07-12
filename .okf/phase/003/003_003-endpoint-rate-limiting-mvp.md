@@ -3,9 +3,9 @@ id: 003_003
 phase: 003
 task: 003
 title: Endpoint rate limiting MVP
-status: active
+status: done
 created_at: 2026-07-12
-completed_at: null
+completed_at: 2026-07-12
 owner: codex
 type: feature
 priority: high
@@ -104,4 +104,27 @@ dotnet pack ShortenLink.slnx -c Release --verbosity minimal
 
 ## Done Notes
 
-Not started.
+Completed on 2026-07-12.
+
+Implemented:
+
+- Added `ShortenLink:RateLimiting` options with independent create and redirect fixed-window policies.
+- Added options validation for positive permit/window values and non-negative queues.
+- Wired ASP.NET Core rate limiting services in `ShortenLink.AspNetCore` and enabled middleware through the demo host.
+- Applied the create policy to `POST /api/short-links` and the redirect policy to `GET /{code}` only when rate limiting is enabled.
+- Preserved default disabled behavior for compatibility.
+- Ensured redirect requests are rejected by rate limiting before cache lookup, database lookup, or analytics recording.
+- Updated demo host configuration and README with rate limiting settings.
+- Added API tests for disabled behavior, create over-limit responses, redirect over-limit responses before extra analytics recording, option binding, and invalid options.
+
+Verification:
+
+- `dotnet build ShortenLink.slnx --verbosity minimal`
+- `dotnet test tests\ShortenLink.Api.Tests\ShortenLink.Api.Tests.csproj --verbosity minimal`
+- `dotnet test ShortenLink.slnx --verbosity minimal`
+- `dotnet pack ShortenLink.slnx -c Release --verbosity minimal`
+
+Notes:
+
+- Over-limit requests return HTTP `429`.
+- `dotnet pack` still emits the expected informational warning that `ShortenLink.Api` is not packable, while the reusable packages are produced successfully.

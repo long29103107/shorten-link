@@ -4,9 +4,9 @@ title: Production Readiness
 status: active
 created_at: 2026-07-09
 updated_at: 2026-07-12
-current_task: 003_003
+current_task: null
 task_count: 3
-done_count: 2
+done_count: 3
 depends_on:
   - 002
 ---
@@ -54,20 +54,21 @@ Out:
 |---|---|---|---|
 | 003_001 | Async click analytics MVP | done | 2026-07-12 |
 | 003_002 | Cache abstraction and Redis provider MVP | done | 2026-07-12 |
-| 003_003 | Endpoint rate limiting MVP | active |  |
+| 003_003 | Endpoint rate limiting MVP | done | 2026-07-12 |
 
 ## Current Task
 
-`003_003 - endpoint rate limiting MVP` is the active Phase 003 task.
+No task is active. `003_003 - endpoint rate limiting MVP` is complete.
 
 ## Completed Notes
 
 - `003_001` completed on 2026-07-12. Added reusable click analytics contracts, EF-backed click persistence, ASP.NET Core async recorder/worker integration, redirect analytics capture, and focused infrastructure/API coverage while keeping redirect responses independent from slow persistence.
 - `003_002` completed on 2026-07-12. Added reusable short-link cache contracts, disabled defaults, memory and Redis provider wiring, distributed cache serialization, redirect cache lookup before database lookup, deactivate invalidation, README configuration notes, and tests covering cache behavior and provider selection without requiring a live Redis server.
+- `003_003` completed on 2026-07-12. Added configurable ASP.NET Core fixed-window rate limiting for create and redirect endpoints, kept default behavior disabled for compatibility, ensured rejected redirects do not reach cache/database/analytics work, updated README/demo config, and added API coverage for accepted, over-limit, disabled, and invalid-option behavior.
 
 ## Next Task Proposal
 
-Implement `003_003 - endpoint rate limiting MVP` next.
+Create `003_004 - local operational stack and Docker Compose MVP` next.
 
 ## Scan Rule
 
