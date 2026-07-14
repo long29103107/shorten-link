@@ -1,15 +1,15 @@
 namespace ShortenLink.Core;
 
-public static class ShortLinkAliasValidator
+public static class ShortCodeValidator
 {
-    public static bool IsValid(string? alias)
+    public static bool IsValid(string? code)
     {
-        if (string.IsNullOrWhiteSpace(alias))
+        if (string.IsNullOrWhiteSpace(code))
         {
             return false;
         }
 
-        foreach (var character in alias)
+        foreach (var character in code)
         {
             if (!char.IsAsciiLetterOrDigit(character) && character is not '_' and not '-')
             {

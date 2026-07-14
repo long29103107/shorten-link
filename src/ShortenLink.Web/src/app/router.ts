@@ -5,6 +5,10 @@ export function parseRoute(pathname: string): AppRoute {
     return { kind: "home" };
   }
 
+  if (pathname === "/admin") {
+    return { kind: "admin" };
+  }
+
   if (pathname === "/not-found") {
     return { kind: "not-found" };
   }

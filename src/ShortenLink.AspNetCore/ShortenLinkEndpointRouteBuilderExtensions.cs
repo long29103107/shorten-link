@@ -20,14 +20,26 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
         var shortLinks = endpoints.MapGroup("/api/short-links")
             .WithTags("Short Links");
 
+        shortLinks.MapGet("/", ListShortLinksAsync)
+            .WithName("ListShortLinks");
+
         var createEndpoint = shortLinks.MapPost("/", CreateShortLinkAsync)
             .WithName("CreateShortLink");
 
         shortLinks.MapGet("/{code}", GetShortLinkDetailsAsync)
             .WithName("GetShortLinkDetails");
 
-        shortLinks.MapDelete("/{code}", DeactivateShortLinkAsync)
+        shortLinks.MapPut("/{code}", UpdateShortLinkAsync)
+            .WithName("UpdateShortLink");
+
+        shortLinks.MapPost("/{code}/deactivate", DeactivateShortLinkAsync)
             .WithName("DeactivateShortLink");
+
+        shortLinks.MapPost("/{code}/activate", ActivateShortLinkAsync)
+            .WithName("ActivateShortLink");
+
+        shortLinks.MapDelete("/{code}", DeleteShortLinkAsync)
+            .WithName("DeleteShortLink");
 
         var redirectEndpoint = endpoints.MapGet("/{code}", RedirectShortLinkAsync)
             .WithName("RedirectShortLink");
@@ -44,6 +56,25 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
         return endpoints;
     }
 
+    private static async Task<Ok<IReadOnlyList<ShortLinkAdminListItemResponse>>> ListShortLinksAsync(
+        IShortLinkService shortLinkService,
+        IOptions<ShortenLinkOptions> options,
+        HttpContext httpContext,
+        int? limit,
+        CancellationToken cancellationToken)
+    {
+        var safeLimit = Math.Clamp(limit ?? 100, 1, 500);
+        var shortLinks = await shortLinkService.ListRecentAsync(safeLimit, cancellationToken)
+            .ConfigureAwait(false);
+        var response = shortLinks
+            .Select(shortLink => ShortLinkAdminListItemResponse.FromDomain(
+                shortLink,
+                BuildShortUrl(shortLink.Code, options.Value, httpContext)))
+            .ToList();
+
+        return TypedResults.Ok<IReadOnlyList<ShortLinkAdminListItemResponse>>(response);
+    }
+
     private static async Task<Results<Created<ShortLinkCreatedResponse>, JsonHttpResult<ShortLinkErrorResponse>>> CreateShortLinkAsync(
         ShortLinkCreateRequest request,
         IShortLinkService shortLinkService,
@@ -54,7 +85,7 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
         ArgumentNullException.ThrowIfNull(request);
 
         var result = await shortLinkService.CreateAsync(
-            new CreateShortLinkRequest(request.OriginalUrl, request.CustomAlias, request.ExpiredAtUtc),
+            new CreateShortLinkRequest(request.OriginalUrl, request.ExpiredAtUtc),
             cancellationToken).ConfigureAwait(false);
 
         if (!result.Succeeded || result.ShortLink is null)
@@ -83,6 +114,30 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
         return TypedResults.Ok(ShortLinkDetailsResponse.FromDomain(result.ShortLink));
     }
 
+    private static async Task<Results<Ok<ShortLinkAdminListItemResponse>, JsonHttpResult<ShortLinkErrorResponse>>> UpdateShortLinkAsync(
+        string code,
+        ShortLinkUpdateRequest request,
+        IShortLinkService shortLinkService,
+        IOptions<ShortenLinkOptions> options,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var result = await shortLinkService.UpdateAsync(
+            code,
+            new UpdateShortLinkRequest(request.OriginalUrl, request.ExpiredAtUtc),
+            cancellationToken).ConfigureAwait(false);
+        if (!result.Succeeded || result.ShortLink is null)
+        {
+            return CreateErrorResponse(result.ErrorCode, result.ErrorMessage);
+        }
+
+        return TypedResults.Ok(ShortLinkAdminListItemResponse.FromDomain(
+            result.ShortLink,
+            BuildShortUrl(result.ShortLink.Code, options.Value, httpContext)));
+    }
+
     private static async Task<Results<Ok<ShortLinkDeactivatedResponse>, JsonHttpResult<ShortLinkErrorResponse>>> DeactivateShortLinkAsync(
         string code,
         IShortLinkService shortLinkService,
@@ -95,6 +150,34 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
         }
 
         return TypedResults.Ok(new ShortLinkDeactivatedResponse(code, false));
+    }
+
+    private static async Task<Results<Ok<ShortLinkDeactivatedResponse>, JsonHttpResult<ShortLinkErrorResponse>>> ActivateShortLinkAsync(
+        string code,
+        IShortLinkService shortLinkService,
+        CancellationToken cancellationToken)
+    {
+        var result = await shortLinkService.ActivateAsync(code, cancellationToken).ConfigureAwait(false);
+        if (!result.Succeeded)
+        {
+            return CreateErrorResponse(result.ErrorCode, result.ErrorMessage);
+        }
+
+        return TypedResults.Ok(new ShortLinkDeactivatedResponse(code, true));
+    }
+
+    private static async Task<Results<Ok<ShortLinkDeletedResponse>, JsonHttpResult<ShortLinkErrorResponse>>> DeleteShortLinkAsync(
+        string code,
+        IShortLinkService shortLinkService,
+        CancellationToken cancellationToken)
+    {
+        var result = await shortLinkService.DeleteAsync(code, cancellationToken).ConfigureAwait(false);
+        if (!result.Succeeded)
+        {
+            return CreateErrorResponse(result.ErrorCode, result.ErrorMessage);
+        }
+
+        return TypedResults.Ok(new ShortLinkDeletedResponse(code));
     }
 
     private static async Task<IResult> RedirectShortLinkAsync(
@@ -146,11 +229,9 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
     private static int GetStatusCode(string errorCode) =>
         errorCode switch
         {
-            ShortLinkErrorCodes.InvalidAlias => StatusCodes.Status400BadRequest,
             ShortLinkErrorCodes.InvalidCode => StatusCodes.Status400BadRequest,
             ShortLinkErrorCodes.InvalidExpiration => StatusCodes.Status400BadRequest,
             ShortLinkErrorCodes.InvalidUrl => StatusCodes.Status400BadRequest,
-            ShortLinkErrorCodes.DuplicateAlias => StatusCodes.Status409Conflict,
             ShortLinkErrorCodes.NotFound => StatusCodes.Status404NotFound,
             ShortLinkErrorCodes.Expired => StatusCodes.Status410Gone,
             ShortLinkErrorCodes.Inactive => StatusCodes.Status410Gone,
@@ -177,7 +258,10 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
 
     public sealed record ShortLinkCreateRequest(
         string OriginalUrl,
-        string? CustomAlias,
+        DateTimeOffset? ExpiredAtUtc);
+
+    public sealed record ShortLinkUpdateRequest(
+        string OriginalUrl,
         DateTimeOffset? ExpiredAtUtc);
 
     public sealed record ShortLinkCreatedResponse(
@@ -188,6 +272,24 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
     {
         public static ShortLinkCreatedResponse FromDomain(ShortLink shortLink, string shortUrl) =>
             new(shortLink.Code, shortUrl, shortLink.OriginalUrl.AbsoluteUri, shortLink.CreatedAt);
+    }
+
+    public sealed record ShortLinkAdminListItemResponse(
+        string Code,
+        string ShortUrl,
+        string OriginalUrl,
+        DateTimeOffset CreatedAtUtc,
+        DateTimeOffset? ExpiredAtUtc,
+        bool IsActive)
+    {
+        public static ShortLinkAdminListItemResponse FromDomain(ShortLink shortLink, string shortUrl) =>
+            new(
+                shortLink.Code,
+                shortUrl,
+                shortLink.OriginalUrl.AbsoluteUri,
+                shortLink.CreatedAt,
+                shortLink.ExpiresAt,
+                shortLink.IsActive);
     }
 
     public sealed record ShortLinkDetailsResponse(
@@ -207,6 +309,8 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
     }
 
     public sealed record ShortLinkDeactivatedResponse(string Code, bool IsActive);
+
+    public sealed record ShortLinkDeletedResponse(string Code);
 
     public sealed record ShortLinkErrorResponse(string ErrorCode, string Message);
 }

@@ -6,12 +6,14 @@
     <Nullable>enable</Nullable>
     <IsPackable>true</IsPackable>
     <PackageId>ShortenLink.Core</PackageId>
-    <Title>ShortenLink.Core</Title>
-    <Description>Core domain contracts and reusable short-link abstractions for ShortenLink.</Description>
+    <Title>ShortenLink Core</Title>
+    <Description>Core domain models, validation, service contracts, and reusable short-link behavior for Shorten Link consumers.</Description>
     <Authors>ShortenLink Contributors</Authors>
-    <PackageTags>short-link;url-shortener;dotnet;library</PackageTags>
+    <PackageTags>short-link;url-shortener;dotnet;library;contracts</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <RepositoryUrl>https://example.com/shorten-link</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/long29103107/shorten-link</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/long29103107/shorten-link</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 

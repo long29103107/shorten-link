@@ -29,7 +29,6 @@ public sealed class ShortLinkEndpointsTests
         using var response = await client.PostAsJsonAsync("/api/short-links", new
         {
             originalUrl = "https://example.com/docs",
-            customAlias = "docs_1",
             expiredAtUtc = new DateTimeOffset(2026, 7, 20, 0, 0, 0, TimeSpan.Zero)
         });
 
@@ -37,14 +36,15 @@ public sealed class ShortLinkEndpointsTests
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         Assert.NotNull(payload);
-        Assert.Equal("docs_1", payload.Code);
-        Assert.Equal("https://sho.rt/docs_1", payload.ShortUrl);
+        Assert.False(string.IsNullOrWhiteSpace(payload.Code));
+        Assert.Equal(7, payload.Code.Length);
+        Assert.Equal($"https://sho.rt/{payload.Code}", payload.ShortUrl);
         Assert.Equal("https://example.com/docs", payload.OriginalUrl);
         Assert.Equal(new DateTimeOffset(2026, 7, 15, 12, 0, 0, TimeSpan.Zero), payload.CreatedAtUtc);
     }
 
     [Fact]
-    public async Task PostCreate_ReturnsConflictForDuplicateAlias()
+    public async Task PostCreate_GeneratesRandomCodesForRepeatedCreates()
     {
         await using var factory = new ShortLinkApiFactory(enableFrontendFallback: false);
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
@@ -52,23 +52,55 @@ public sealed class ShortLinkEndpointsTests
             AllowAutoRedirect = false
         });
 
-        await client.PostAsJsonAsync("/api/short-links", new
+        using var firstResponse = await client.PostAsJsonAsync("/api/short-links", new
         {
-            originalUrl = "https://example.com/one",
-            customAlias = "taken"
+            originalUrl = "https://example.com/one"
+        });
+        using var secondResponse = await client.PostAsJsonAsync("/api/short-links", new
+        {
+            originalUrl = "https://example.com/two"
         });
 
-        using var response = await client.PostAsJsonAsync("/api/short-links", new
+        var firstPayload = await firstResponse.Content.ReadFromJsonAsync<ShortLinkCreatedResponse>();
+        var secondPayload = await secondResponse.Content.ReadFromJsonAsync<ShortLinkCreatedResponse>();
+
+        Assert.Equal(HttpStatusCode.Created, firstResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, secondResponse.StatusCode);
+        Assert.NotNull(firstPayload);
+        Assert.NotNull(secondPayload);
+        Assert.Equal(7, firstPayload.Code.Length);
+        Assert.Equal(7, secondPayload.Code.Length);
+        Assert.NotEqual(firstPayload.Code, secondPayload.Code);
+    }
+
+    [Fact]
+    public async Task GetList_ReturnsRecentShortLinksForAdmin()
+    {
+        await using var factory = new ShortLinkApiFactory(enableFrontendFallback: false);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
         {
-            originalUrl = "https://example.com/two",
-            customAlias = "taken"
+            AllowAutoRedirect = false
         });
 
-        var payload = await response.Content.ReadFromJsonAsync<ShortLinkErrorResponse>();
+        var first = await CreateShortLinkAsync(client, "https://example.com/one");
+        var second = await CreateShortLinkAsync(client, "https://example.com/two");
 
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        using var response = await client.GetAsync("/api/short-links?limit=10");
+        var payload = await response.Content.ReadFromJsonAsync<List<ShortLinkAdminListItemResponse>>();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.NotNull(payload);
-        Assert.Equal("duplicate_alias", payload.ErrorCode);
+        Assert.Equal(2, payload.Count);
+
+        var firstItem = Assert.Single(payload, item => item.Code == first.Code);
+        Assert.Equal(first.ShortUrl, firstItem.ShortUrl);
+        Assert.Equal("https://example.com/one", firstItem.OriginalUrl);
+        Assert.True(firstItem.IsActive);
+
+        var secondItem = Assert.Single(payload, item => item.Code == second.Code);
+        Assert.Equal(second.ShortUrl, secondItem.ShortUrl);
+        Assert.Equal("https://example.com/two", secondItem.OriginalUrl);
+        Assert.True(secondItem.IsActive);
     }
 
     [Fact]
@@ -95,24 +127,20 @@ public sealed class ShortLinkEndpointsTests
         await using var factory = new ShortLinkApiFactory(enableFrontendFallback: false);
         using var client = factory.CreateClient();
 
-        await client.PostAsJsonAsync("/api/short-links", new
-        {
-            originalUrl = "https://example.com/details",
-            customAlias = "detail01"
-        });
+        var created = await CreateShortLinkAsync(client, "https://example.com/details");
 
-        using var response = await client.GetAsync("/api/short-links/detail01");
+        using var response = await client.GetAsync($"/api/short-links/{created.Code}");
         var payload = await response.Content.ReadFromJsonAsync<ShortLinkDetailsResponse>();
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.NotNull(payload);
-        Assert.Equal("detail01", payload.Code);
+        Assert.Equal(created.Code, payload.Code);
         Assert.Equal("https://example.com/details", payload.OriginalUrl);
         Assert.True(payload.IsActive);
     }
 
     [Fact]
-    public async Task Delete_DeactivatesShortLinkAndRedirectReturnsGone()
+    public async Task PostDeactivate_DeactivatesShortLinkAndRedirectReturnsGone()
     {
         await using var factory = new ShortLinkApiFactory(enableFrontendFallback: false);
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
@@ -120,20 +148,56 @@ public sealed class ShortLinkEndpointsTests
             AllowAutoRedirect = false
         });
 
-        await client.PostAsJsonAsync("/api/short-links", new
-        {
-            originalUrl = "https://example.com/remove",
-            customAlias = "remove1"
-        });
+        var created = await CreateShortLinkAsync(client, "https://example.com/remove");
 
-        using var deleteResponse = await client.DeleteAsync("/api/short-links/remove1");
-        using var redirectResponse = await client.GetAsync("/remove1");
+        using var deleteResponse = await client.PostAsync($"/api/short-links/{created.Code}/deactivate", null);
+        using var redirectResponse = await client.GetAsync($"/{created.Code}");
         var payload = await redirectResponse.Content.ReadFromJsonAsync<ShortLinkErrorResponse>();
 
         Assert.Equal(HttpStatusCode.OK, deleteResponse.StatusCode);
         Assert.Equal(HttpStatusCode.Gone, redirectResponse.StatusCode);
         Assert.NotNull(payload);
         Assert.Equal("inactive", payload.ErrorCode);
+    }
+
+    [Fact]
+    public async Task PutUpdate_ChangesDestinationForRedirect()
+    {
+        await using var factory = new ShortLinkApiFactory(enableFrontendFallback: false);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        var created = await CreateShortLinkAsync(client, "https://example.com/old");
+
+        using var updateResponse = await client.PutAsJsonAsync($"/api/short-links/{created.Code}", new
+        {
+            originalUrl = "https://example.com/new"
+        });
+        using var redirectResponse = await client.GetAsync($"/{created.Code}");
+
+        Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect, redirectResponse.StatusCode);
+        Assert.Equal("https://example.com/new", redirectResponse.Headers.Location?.AbsoluteUri);
+    }
+
+    [Fact]
+    public async Task Delete_RemovesShortLink()
+    {
+        await using var factory = new ShortLinkApiFactory(enableFrontendFallback: false);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        var created = await CreateShortLinkAsync(client, "https://example.com/delete");
+
+        using var deleteResponse = await client.DeleteAsync($"/api/short-links/{created.Code}");
+        using var detailsResponse = await client.GetAsync($"/api/short-links/{created.Code}");
+
+        Assert.Equal(HttpStatusCode.OK, deleteResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, detailsResponse.StatusCode);
     }
 
     [Fact]
@@ -148,15 +212,11 @@ public sealed class ShortLinkEndpointsTests
             AllowAutoRedirect = false
         });
 
-        await client.PostAsJsonAsync("/api/short-links", new
-        {
-            originalUrl = "https://example.com/cached-remove",
-            customAlias = "cached1"
-        });
+        var created = await CreateShortLinkAsync(client, "https://example.com/cached-remove");
 
-        using var firstRedirectResponse = await client.GetAsync("/cached1");
-        using var deleteResponse = await client.DeleteAsync("/api/short-links/cached1");
-        using var secondRedirectResponse = await client.GetAsync("/cached1");
+        using var firstRedirectResponse = await client.GetAsync($"/{created.Code}");
+        using var deleteResponse = await client.PostAsync($"/api/short-links/{created.Code}/deactivate", null);
+        using var secondRedirectResponse = await client.GetAsync($"/{created.Code}");
         var payload = await secondRedirectResponse.Content.ReadFromJsonAsync<ShortLinkErrorResponse>();
 
         Assert.Equal(HttpStatusCode.Redirect, firstRedirectResponse.StatusCode);
@@ -175,13 +235,9 @@ public sealed class ShortLinkEndpointsTests
             AllowAutoRedirect = false
         });
 
-        await client.PostAsJsonAsync("/api/short-links", new
-        {
-            originalUrl = "https://example.com/redirect",
-            customAlias = "jump01"
-        });
+        var created = await CreateShortLinkAsync(client, "https://example.com/redirect");
 
-        using var response = await client.GetAsync("/jump01");
+        using var response = await client.GetAsync($"/{created.Code}");
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.Equal("https://example.com/redirect", response.Headers.Location?.AbsoluteUri);
@@ -196,13 +252,9 @@ public sealed class ShortLinkEndpointsTests
             AllowAutoRedirect = false
         });
 
-        await client.PostAsJsonAsync("/api/short-links", new
-        {
-            originalUrl = "https://example.com/redirect",
-            customAlias = "track01"
-        });
+        var created = await CreateShortLinkAsync(client, "https://example.com/redirect");
 
-        using var request = new HttpRequestMessage(HttpMethod.Get, "/track01");
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"/{created.Code}");
         request.Headers.Referrer = new Uri("https://referrer.example/source");
         request.Headers.UserAgent.ParseAdd("shorten-link-tests/1.0");
 
@@ -216,7 +268,7 @@ public sealed class ShortLinkEndpointsTests
         }));
 
         var click = Assert.Single(await factory.GetRecordedClicksAsync());
-        Assert.Equal("track01", click.ShortCode);
+        Assert.Equal(created.Code, click.ShortCode);
         Assert.Equal("shorten-link-tests/1.0", click.UserAgent);
         Assert.Equal("https://referrer.example/source", click.Referrer);
     }
@@ -230,13 +282,9 @@ public sealed class ShortLinkEndpointsTests
             AllowAutoRedirect = false
         });
 
-        await client.PostAsJsonAsync("/api/short-links", new
-        {
-            originalUrl = "https://example.com/redirect",
-            customAlias = "track00"
-        });
+        var created = await CreateShortLinkAsync(client, "https://example.com/redirect");
 
-        using var response = await client.GetAsync("/track00");
+        using var response = await client.GetAsync($"/{created.Code}");
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         await Task.Delay(150);
@@ -257,13 +305,11 @@ public sealed class ShortLinkEndpointsTests
 
         using var firstResponse = await client.PostAsJsonAsync("/api/short-links", new
         {
-            originalUrl = "https://example.com/one",
-            customAlias = "open01"
+            originalUrl = "https://example.com/one"
         });
         using var secondResponse = await client.PostAsJsonAsync("/api/short-links", new
         {
-            originalUrl = "https://example.com/two",
-            customAlias = "open02"
+            originalUrl = "https://example.com/two"
         });
 
         Assert.Equal(HttpStatusCode.Created, firstResponse.StatusCode);
@@ -285,13 +331,11 @@ public sealed class ShortLinkEndpointsTests
 
         using var firstResponse = await client.PostAsJsonAsync("/api/short-links", new
         {
-            originalUrl = "https://example.com/one",
-            customAlias = "limit01"
+            originalUrl = "https://example.com/one"
         });
         using var secondResponse = await client.PostAsJsonAsync("/api/short-links", new
         {
-            originalUrl = "https://example.com/two",
-            customAlias = "limit02"
+            originalUrl = "https://example.com/two"
         });
 
         Assert.Equal(HttpStatusCode.Created, firstResponse.StatusCode);
@@ -312,14 +356,10 @@ public sealed class ShortLinkEndpointsTests
             AllowAutoRedirect = false
         });
 
-        await client.PostAsJsonAsync("/api/short-links", new
-        {
-            originalUrl = "https://example.com/redirect",
-            customAlias = "limitrd"
-        });
+        var created = await CreateShortLinkAsync(client, "https://example.com/redirect");
 
-        using var firstResponse = await client.GetAsync("/limitrd");
-        using var secondResponse = await client.GetAsync("/limitrd");
+        using var firstResponse = await client.GetAsync($"/{created.Code}");
+        using var secondResponse = await client.GetAsync($"/{created.Code}");
 
         Assert.Equal(HttpStatusCode.Redirect, firstResponse.StatusCode);
         Assert.Equal(HttpStatusCode.TooManyRequests, secondResponse.StatusCode);
@@ -670,6 +710,24 @@ public sealed class ShortLinkEndpointsTests
         return services.BuildServiceProvider();
     }
 
+    private static async Task<ShortLinkCreatedResponse> CreateShortLinkAsync(
+        HttpClient client,
+        string originalUrl,
+        DateTimeOffset? expiredAtUtc = null)
+    {
+        using var response = await client.PostAsJsonAsync("/api/short-links", new
+        {
+            originalUrl,
+            expiredAtUtc
+        });
+        var payload = await response.Content.ReadFromJsonAsync<ShortLinkCreatedResponse>();
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.NotNull(payload);
+
+        return payload;
+    }
+
     private sealed class FixedTimeProvider : TimeProvider
     {
         private readonly DateTimeOffset utcNow;
@@ -690,6 +748,14 @@ public sealed class ShortLinkEndpointsTests
 
     private sealed record ShortLinkDetailsResponse(
         string Code,
+        string OriginalUrl,
+        DateTimeOffset CreatedAtUtc,
+        DateTimeOffset? ExpiredAtUtc,
+        bool IsActive);
+
+    private sealed record ShortLinkAdminListItemResponse(
+        string Code,
+        string ShortUrl,
         string OriginalUrl,
         DateTimeOffset CreatedAtUtc,
         DateTimeOffset? ExpiredAtUtc,

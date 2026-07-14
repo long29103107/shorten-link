@@ -2,7 +2,7 @@
 
 Reusable .NET short-link library plus a demo ASP.NET Core API and React frontend.
 
-This repository is currently in Phase 001 scaffold work. The reusable library projects are intentionally separated from the demo application so they can be packed as NuGet packages and consumed by other .NET applications.
+The reusable library projects are intentionally separated from the demo application so they can be packed as NuGet packages and consumed by other .NET applications. `ShortenLink.AspNetCore` is the normal package for ASP.NET Core hosts; the demo API and React app exist to prove the package behavior, not to own short-link business logic.
 
 ## Project Structure
 
@@ -20,21 +20,24 @@ tests/
   ShortenLink.Api.Tests/
 ```
 
-## Build And Pack
+## Package Surface
+
+| Package | Use when |
+|---|---|
+| `ShortenLink.AspNetCore` | You are building an ASP.NET Core host and want DI registration, options binding, endpoint mapping, redirect fallback, analytics worker integration, cache wiring, and rate limiting. Start here for normal API projects. |
+| `ShortenLink.Core` | You need direct access to reusable domain models, validation, service contracts, request/result types, or `IShortLinkService` from non-host code. |
+| `ShortenLink.Infrastructure` | You are composing persistence manually or extending provider wiring. Most ASP.NET Core hosts receive it transitively through `ShortenLink.AspNetCore`. |
+
+`ShortenLink.Api` and `ShortenLink.Web` are demo applications and are not part of the reusable package surface.
+
+## Build, Test, And Pack
 
 Use these commands from the repository root.
 
-### Build
+### Build And Test
 
 ```powershell
 dotnet build ShortenLink.slnx
-```
-
-## Test
-
-The test projects are placeholders in `001_001`. Real unit and integration tests are added by later Phase 001 tasks.
-
-```powershell
 dotnet test ShortenLink.slnx
 ```
 
@@ -72,6 +75,42 @@ To pack every packable project in the solution:
 dotnet pack ShortenLink.slnx -c Release
 ```
 
+### Release-Readiness Verification
+
+Before handing local packages to a consumer app, run:
+
+```powershell
+dotnet build ShortenLink.slnx --verbosity minimal
+dotnet test ShortenLink.slnx --verbosity minimal
+dotnet pack ShortenLink.slnx -c Release --verbosity minimal
+.\scripts\release-dry-run.ps1
+.\scripts\smoke-consumer-package.ps1
+```
+
+The build/test/pack commands validate the repository and package artifacts. The consumer smoke creates a clean app, installs the packaged `ShortenLink.AspNetCore` entry point from a local package source, and verifies create, detail, redirect, deactivate, and post-delete redirect behavior without using demo API internals.
+
+The release dry-run script packs the reusable packages into `.tmp\release-dry-run`, inspects the package metadata and contents, confirms `README.md` is included, checks dependency shape, and verifies that demo API/Web artifacts are not coupled into the reusable packages. It never publishes to NuGet; passing `-Publish` fails closed.
+
+Keep the dry-run package artifacts for inspection when needed:
+
+```powershell
+.\scripts\release-dry-run.ps1 -KeepArtifacts
+```
+
+### Release Checklist
+
+Use this checklist before any future real package publish:
+
+- Review package versions and release notes for `ShortenLink.Core`, `ShortenLink.Infrastructure`, and `ShortenLink.AspNetCore`.
+- Run `dotnet build ShortenLink.slnx --verbosity minimal`.
+- Run `dotnet test ShortenLink.slnx --verbosity minimal`.
+- Run `dotnet pack ShortenLink.slnx -c Release --verbosity minimal`.
+- Run `.\scripts\release-dry-run.ps1` and confirm it reports `Published: false`.
+- Run `.\scripts\smoke-consumer-package.ps1` to validate a clean ASP.NET Core consumer installation.
+- If publishing later, use a separate explicit publish command or workflow with a real NuGet API key, manual approval, and the package artifacts inspected by the dry-run.
+
+NuGet publishing is intentionally out of scope for the default verification path. No script in this repository should publish packages unless a later task adds a credential-protected publish workflow deliberately.
+
 ## Use From Another .NET App
 
 Most ASP.NET Core consumers should start with `ShortenLink.AspNetCore`. That package is the host-facing entry point for dependency injection and endpoint mapping. It brings the lower-level reusable projects with it through package/project references.
@@ -102,11 +141,11 @@ dotnet add reference ..\shorten-link\src\ShortenLink.AspNetCore\ShortenLink.AspN
 
 ### Option 2: Install From A Local NuGet Folder
 
-Create a local package folder and copy the packed package into it:
+Create a local package folder that contains all reusable packages:
 
 ```powershell
 New-Item -ItemType Directory -Force .\.nupkg
-Copy-Item ..\shorten-link\src\ShortenLink.AspNetCore\bin\Release\*.nupkg .\.nupkg\
+dotnet pack ..\shorten-link\ShortenLink.slnx -c Release -o .\.nupkg
 ```
 
 Add that folder as a NuGet source for the consumer app:
@@ -121,7 +160,7 @@ Install the package:
 dotnet add package ShortenLink.AspNetCore --source .\.nupkg
 ```
 
-If the consumer needs direct access to lower-level contracts, install/reference `ShortenLink.Core` as well. Normal API hosts should not need to start there.
+If the consumer needs direct access to lower-level contracts, install/reference `ShortenLink.Core` as well. If it needs to compose EF Core persistence manually, install/reference `ShortenLink.Infrastructure`. Normal API hosts should start with `ShortenLink.AspNetCore`.
 
 ### ASP.NET Core Setup
 
@@ -136,6 +175,7 @@ builder.Services.AddShortenLink(builder.Configuration);
 
 var app = builder.Build();
 
+app.UseShortenLinkRateLimiting();
 app.MapShortenLinkEndpoints();
 
 app.Run();
@@ -160,6 +200,25 @@ Minimum `appsettings.json` configuration for SQLite default mode:
       "Enabled": false,
       "UseAsyncWorker": true,
       "QueueCapacity": 512
+    },
+    "Cache": {
+      "Enabled": false,
+      "Provider": "Memory",
+      "RedisConnectionString": "localhost:6379",
+      "EntryTtlSeconds": 3600
+    },
+    "RateLimiting": {
+      "Enabled": false,
+      "Create": {
+        "PermitLimit": 60,
+        "WindowSeconds": 60,
+        "QueueLimit": 0
+      },
+      "Redirect": {
+        "PermitLimit": 120,
+        "WindowSeconds": 60,
+        "QueueLimit": 0
+      }
     }
   }
 }
@@ -167,7 +226,7 @@ Minimum `appsettings.json` configuration for SQLite default mode:
 
 ### Direct Service Usage
 
-After the core service task lands, application services can depend on the reusable `IShortLinkService` contract directly. The intended shape is:
+Application services can depend on the reusable `IShortLinkService` contract directly. The intended shape is:
 
 ```csharp
 using ShortenLink.Core.Services;
@@ -206,6 +265,10 @@ Switch to PostgreSQL by configuration only:
 The demo host still uses `AddShortenLink(builder.Configuration);` with no application-code changes. On startup it calls `EnsureCreated()` for the selected provider, so SQLite remains the default local path while PostgreSQL can be enabled with a valid connection string.
 
 `IShortLinkService`, `CreateShortLinkRequest`, and `CreateShortLinkResult` live in `ShortenLink.Core.Services`. Consumer code should continue to call the reusable service contract instead of re-creating short-link rules in the host app.
+
+## Configuration Defaults And Optional Providers
+
+SQLite is the safe default and requires no external infrastructure. PostgreSQL, Redis cache, click analytics, and rate limiting are opt-in through configuration. A consumer can install the same `ShortenLink.AspNetCore` package and choose behavior through `ShortenLink:*` settings instead of changing application code.
 
 ## Click Analytics
 

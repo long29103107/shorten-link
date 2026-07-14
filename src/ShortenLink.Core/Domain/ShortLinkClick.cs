@@ -9,7 +9,7 @@ public sealed class ShortLinkClick
         string? userAgent,
         string? referrer)
     {
-        ShortLinkAliasValidator.ValidateCodeOrThrow(shortCode);
+        ShortCodeValidator.ValidateCodeOrThrow(shortCode);
 
         ShortCode = shortCode;
         ClickedAtUtc = clickedAtUtc;

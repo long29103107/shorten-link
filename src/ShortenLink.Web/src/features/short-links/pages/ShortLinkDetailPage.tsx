@@ -3,6 +3,9 @@ import { ApiError } from "../api/http";
 import { deactivateShortLink, getShortLinkDetails } from "../api/shortLinksApi";
 import type { ShortLinkDetails } from "../types";
 import { formatDateTime, toFriendlyErrorMessage } from "../types";
+import { Badge } from "../../../shared/components/ui/badge";
+import { Button } from "../../../shared/components/ui/button";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "../../../shared/components/ui/card";
 
 type ShortLinkDetailPageProps = {
   code: string;
@@ -79,44 +82,47 @@ export function ShortLinkDetailPage({ code, onBackHome }: ShortLinkDetailPagePro
 
   if (isLoading) {
     return (
-      <section className="panel panel-detail">
-        <div className="panel-heading">
+      <Card className="panel-detail">
+        <CardHeader>
           <p className="eyebrow">Details</p>
-          <h2>Loading {code}...</h2>
-        </div>
-      </section>
+          <CardTitle>Loading {code}...</CardTitle>
+        </CardHeader>
+      </Card>
     );
   }
 
   if (!details) {
     return (
-      <section className="panel panel-detail">
-        <div className="panel-heading">
+      <Card className="panel-detail">
+        <CardHeader>
           <p className="eyebrow">Details</p>
-          <h2>{code}</h2>
-        </div>
+          <CardTitle>{code}</CardTitle>
+        </CardHeader>
+        <CardContent>
         <p className="feedback feedback-error">{errorMessage ?? "This short link is missing."}</p>
-        <div className="form-actions">
-          <button className="action-button" type="button" onClick={onBackHome}>
+        </CardContent>
+        <CardFooter>
+          <Button onClick={onBackHome}>
             Back home
-          </button>
-        </div>
-      </section>
+          </Button>
+        </CardFooter>
+      </Card>
     );
   }
 
   return (
-    <section className="panel panel-detail">
-      <div className="panel-heading panel-heading-wide">
+    <Card className="panel-detail">
+      <CardHeader className="panel-heading-wide">
         <div>
           <p className="eyebrow">Details</p>
-          <h2>{details.code}</h2>
+          <CardTitle>{details.code}</CardTitle>
         </div>
-        <span className={details.isActive ? "status-pill status-live" : "status-pill status-off"}>
+        <Badge variant={details.isActive ? "default" : "destructive"}>
           {details.isActive ? "Active" : "Deactivated"}
-        </span>
-      </div>
+        </Badge>
+      </CardHeader>
 
+      <CardContent>
       <dl className="detail-list">
         <div>
           <dt>Destination</dt>
@@ -137,20 +143,20 @@ export function ShortLinkDetailPage({ code, onBackHome }: ShortLinkDetailPagePro
       </dl>
 
       {errorMessage ? <p className="feedback feedback-error">{errorMessage}</p> : null}
+      </CardContent>
 
-      <div className="form-actions">
-        <button className="action-button action-button-secondary" type="button" onClick={onBackHome}>
+      <CardFooter>
+        <Button variant="secondary" onClick={onBackHome}>
           Back home
-        </button>
-        <button
-          className="action-button action-button-danger"
-          type="button"
+        </Button>
+        <Button
+          variant="destructive"
           onClick={handleDeactivate}
           disabled={!details.isActive || isDeactivating}
         >
           {isDeactivating ? "Deactivating..." : details.isActive ? "Deactivate link" : "Already inactive"}
-        </button>
-      </div>
-    </section>
+        </Button>
+      </CardFooter>
+    </Card>
   );
 }

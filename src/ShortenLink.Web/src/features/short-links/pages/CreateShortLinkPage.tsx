@@ -5,18 +5,16 @@ import type { CreatedShortLink } from "../types";
 type CreateShortLinkPageProps = {
   recentLink: CreatedShortLink | null;
   onCreated: (createdLink: CreatedShortLink) => void;
-  onOpenDetails: (code: string) => void;
 };
 
 export function CreateShortLinkPage({
   recentLink,
-  onCreated,
-  onOpenDetails
+  onCreated
 }: CreateShortLinkPageProps) {
   return (
     <div className="workspace-grid">
-      <CreateShortLinkForm onCreated={onCreated} onOpenDetails={onOpenDetails} />
-      <RecentLinkPanel recentLink={recentLink} onOpenDetails={onOpenDetails} />
+      <CreateShortLinkForm onCreated={onCreated} />
+      <RecentLinkPanel recentLink={recentLink} />
     </div>
   );
 }

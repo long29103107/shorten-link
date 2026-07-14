@@ -15,12 +15,14 @@
     <Nullable>enable</Nullable>
     <IsPackable>true</IsPackable>
     <PackageId>ShortenLink.AspNetCore</PackageId>
-    <Title>ShortenLink.AspNetCore</Title>
-    <Description>ASP.NET Core dependency injection and endpoint mapping integration for ShortenLink.</Description>
+    <Title>ShortenLink ASP.NET Core</Title>
+    <Description>ASP.NET Core dependency injection, options, rate limiting, and endpoint mapping integration for Shorten Link hosts.</Description>
     <Authors>ShortenLink Contributors</Authors>
-    <PackageTags>short-link;url-shortener;aspnetcore;dotnet;nuget</PackageTags>
+    <PackageTags>short-link;url-shortener;aspnetcore;dotnet;nuget;minimal-api</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <RepositoryUrl>https://example.com/shorten-link</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/long29103107/shorten-link</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/long29103107/shorten-link</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 

@@ -9,7 +9,7 @@ public sealed class ShortLink
         DateTimeOffset? expiresAt = null,
         bool isActive = true)
     {
-        ShortLinkAliasValidator.ValidateCodeOrThrow(code);
+        ShortCodeValidator.ValidateCodeOrThrow(code);
         ArgumentNullException.ThrowIfNull(originalUrl);
 
         if (!ShortLinkUrlValidator.IsValid(originalUrl.AbsoluteUri))
@@ -37,6 +37,8 @@ public sealed class ShortLink
     public bool IsExpired(DateTimeOffset now) => ExpiresAt is not null && ExpiresAt <= now;
 
     public bool CanResolve(DateTimeOffset now) => IsActive && !IsExpired(now);
+
+    public void Activate() => IsActive = true;
 
     public void Deactivate() => IsActive = false;
 }

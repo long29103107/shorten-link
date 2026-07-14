@@ -14,6 +14,24 @@ public sealed class EfCoreShortLinkRepository : IShortLinkRepository
         this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
     }
 
+    public async Task<IReadOnlyList<ShortLink>> ListRecentAsync(
+        int limit,
+        CancellationToken cancellationToken = default)
+    {
+        var safeLimit = Math.Clamp(limit, 1, 500);
+        var records = await dbContext.ShortLinks
+            .AsNoTracking()
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return records
+            .OrderByDescending(link => link.CreatedAt)
+            .ThenBy(link => link.Code, StringComparer.Ordinal)
+            .Take(safeLimit)
+            .Select(record => record.ToDomain())
+            .ToList();
+    }
+
     public async Task<ShortLink?> FindByCodeAsync(
         string code,
         CancellationToken cancellationToken = default)
@@ -61,5 +79,20 @@ public sealed class EfCoreShortLinkRepository : IShortLinkRepository
         }
 
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task DeleteAsync(
+        string code,
+        CancellationToken cancellationToken = default)
+    {
+        var record = await dbContext.ShortLinks
+            .FirstOrDefaultAsync(link => link.Code == code, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (record is not null)
+        {
+            dbContext.ShortLinks.Remove(record);
+            await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
     }
 }

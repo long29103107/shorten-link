@@ -1,23 +1,27 @@
+import { Button } from "../../../shared/components/ui/button";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "../../../shared/components/ui/card";
+
 type NotFoundPageProps = {
   onBackHome: () => void;
 };
 
 export function NotFoundPage({ onBackHome }: NotFoundPageProps) {
   return (
-    <section className="panel panel-detail">
-      <div className="panel-heading">
+    <Card className="panel-detail">
+      <CardHeader>
         <p className="eyebrow">Fallback</p>
-        <h2>This route is not part of the demo flow.</h2>
-      </div>
+        <CardTitle>This route is not part of the demo flow.</CardTitle>
+      </CardHeader>
+      <CardContent>
       <p className="muted-copy">
-        Try creating a new short link or open a detail route in the form
-        <code> /links/your-code</code>.
+        Try creating a new short link from the home screen.
       </p>
-      <div className="form-actions">
-        <button className="action-button" type="button" onClick={onBackHome}>
+      </CardContent>
+      <CardFooter>
+        <Button onClick={onBackHome}>
           Return to create flow
-        </button>
-      </div>
-    </section>
+        </Button>
+      </CardFooter>
+    </Card>
   );
 }

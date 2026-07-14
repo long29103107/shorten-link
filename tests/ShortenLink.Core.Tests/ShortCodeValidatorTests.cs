@@ -2,16 +2,16 @@ using Xunit;
 
 namespace ShortenLink.Core.Tests;
 
-public sealed class ShortLinkAliasValidatorTests
+public sealed class ShortCodeValidatorTests
 {
     [Theory]
     [InlineData("abc")]
     [InlineData("ABC")]
     [InlineData("abc123")]
     [InlineData("a_b-c")]
-    public void IsValid_AcceptsLettersNumbersUnderscoreAndHyphen(string alias)
+    public void IsValid_AcceptsLettersNumbersUnderscoreAndHyphen(string code)
     {
-        Assert.True(ShortLinkAliasValidator.IsValid(alias));
+        Assert.True(ShortCodeValidator.IsValid(code));
     }
 
     [Theory]
@@ -21,8 +21,8 @@ public sealed class ShortLinkAliasValidatorTests
     [InlineData("abc/def")]
     [InlineData("abc def")]
     [InlineData("abc@def")]
-    public void IsValid_RejectsMissingOrUnsupportedCharacters(string? alias)
+    public void IsValid_RejectsMissingOrUnsupportedCharacters(string? code)
     {
-        Assert.False(ShortLinkAliasValidator.IsValid(alias));
+        Assert.False(ShortCodeValidator.IsValid(code));
     }
 }

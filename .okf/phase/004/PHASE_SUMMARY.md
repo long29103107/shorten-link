@@ -1,12 +1,12 @@
 ---
 phase: 004
 title: Release And Consumer Hardening
-status: active
+status: complete
 created_at: 2026-07-12
-updated_at: 2026-07-12
+updated_at: 2026-07-14
 current_task: null
-task_count: 1
-done_count: 1
+task_count: 2
+done_count: 2
 depends_on:
   - 003
 ---
@@ -49,18 +49,20 @@ Out:
 | Task | Title | Status | Done At |
 |---|---|---|---|
 | 004_001 | Consumer package installation smoke MVP | done | 2026-07-12 |
+| 004_002 | Release documentation and package metadata hardening | done | 2026-07-14 |
 
 ## Current Task
 
-No active task. Phase 004 is ready for the next planned slice.
+No task is active. Phase 004 is complete.
 
 ## Completed Notes
 
 - `004_001` completed on 2026-07-12. Added a repeatable consumer package smoke that creates a clean ASP.NET Core app, installs `ShortenLink.AspNetCore` from local packed output, avoids demo API internals, runs SQLite default mode, and verifies create, detail, redirect, deactivate, and post-delete redirect behavior. README now documents the smoke command, and repo build, test, and pack verification passed.
+- `004_002` completed on 2026-07-14. Hardened release-facing package metadata for the reusable packages, updated README package-selection and release-readiness guidance, documented the complete local package source flow and optional provider defaults, and verified build, test, pack, and the consumer package smoke.
 
 ## Next Task Proposal
 
-Create `004_002 - release documentation and package metadata hardening` next.
+Phase 004 is complete. Next, decide whether to open a publishing/release automation phase or finalize the current product definition.
 
 ## Scan Rule
 

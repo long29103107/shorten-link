@@ -59,6 +59,40 @@ public sealed class EfCoreShortLinkRepositoryTests
     }
 
     [Fact]
+    public async Task ListRecentAsync_ReturnsNewestLinksFirst()
+    {
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var repository = database.CreateRepository();
+        await repository.AddAsync(new ShortLink(
+            "oldest1",
+            new Uri("https://example.com/old"),
+            new DateTimeOffset(2026, 7, 11, 9, 0, 0, TimeSpan.Zero)));
+        await repository.AddAsync(new ShortLink(
+            "newest1",
+            new Uri("https://example.com/new"),
+            new DateTimeOffset(2026, 7, 12, 9, 0, 0, TimeSpan.Zero)));
+
+        var links = await repository.ListRecentAsync(10);
+
+        Assert.Collection(
+            links,
+            link => Assert.Equal("newest1", link.Code),
+            link => Assert.Equal("oldest1", link.Code));
+    }
+
+    [Fact]
+    public async Task DeleteAsync_RemovesShortLink()
+    {
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var repository = database.CreateRepository();
+        await repository.AddAsync(new ShortLink("delete1", new Uri("https://example.com/delete"), DateTimeOffset.UtcNow));
+
+        await repository.DeleteAsync("delete1");
+
+        Assert.Null(await repository.FindByCodeAsync("delete1"));
+    }
+
+    [Fact]
     public async Task AddAsync_EnforcesUniqueCode()
     {
         await using var database = await SqliteTestDatabase.CreateAsync();

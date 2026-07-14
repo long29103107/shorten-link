@@ -1,13 +1,14 @@
 import { useState } from "react";
 import type { CreatedShortLink } from "../types";
 import { formatDateTime } from "../types";
+import { Button } from "../../../shared/components/ui/button";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "../../../shared/components/ui/card";
 
 type RecentLinkPanelProps = {
   recentLink: CreatedShortLink | null;
-  onOpenDetails: (code: string) => void;
 };
 
-export function RecentLinkPanel({ recentLink, onOpenDetails }: RecentLinkPanelProps) {
+export function RecentLinkPanel({ recentLink }: RecentLinkPanelProps) {
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
 
   const handleCopy = async () => {
@@ -26,26 +27,29 @@ export function RecentLinkPanel({ recentLink, onOpenDetails }: RecentLinkPanelPr
 
   if (!recentLink) {
     return (
-      <section className="panel panel-preview panel-empty">
-        <div className="panel-heading">
+      <Card className="panel-preview panel-empty">
+        <CardHeader>
           <p className="eyebrow">Result</p>
-          <h2>Your latest link will land here.</h2>
-        </div>
+          <CardTitle>Your latest link will land here.</CardTitle>
+        </CardHeader>
+        <CardContent>
         <p className="muted-copy">
-          Create a link to get a copy-ready short URL, then jump straight into the
-          detail view to review or deactivate it.
+          Create a link to get a copy-ready short URL with a random code generated
+          by the app.
         </p>
-      </section>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <section className="panel panel-preview">
-      <div className="panel-heading">
+    <Card className="panel-preview">
+      <CardHeader>
         <p className="eyebrow">Result</p>
-        <h2>{recentLink.code}</h2>
-      </div>
+        <CardTitle>{recentLink.code}</CardTitle>
+      </CardHeader>
 
+      <CardContent>
       <dl className="detail-list">
         <div>
           <dt>Short URL</dt>
@@ -71,19 +75,13 @@ export function RecentLinkPanel({ recentLink, onOpenDetails }: RecentLinkPanelPr
           Clipboard access was blocked, so the URL could not be copied.
         </p>
       ) : null}
+      </CardContent>
 
-      <div className="form-actions">
-        <button className="action-button" type="button" onClick={handleCopy}>
+      <CardFooter>
+        <Button onClick={handleCopy}>
           Copy short URL
-        </button>
-        <button
-          className="action-button action-button-secondary"
-          type="button"
-          onClick={() => onOpenDetails(recentLink.code)}
-        >
-          Open details
-        </button>
-      </div>
-    </section>
+        </Button>
+      </CardFooter>
+    </Card>
   );
 }

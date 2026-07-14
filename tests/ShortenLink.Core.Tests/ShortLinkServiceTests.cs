@@ -20,44 +20,6 @@ public sealed class ShortLinkServiceTests
     }
 
     [Fact]
-    public async Task CreateAsync_RejectsInvalidAlias()
-    {
-        var service = CreateService();
-
-        var result = await service.CreateAsync(new CreateShortLinkRequest("https://example.com", "bad alias"));
-
-        Assert.False(result.Succeeded);
-        Assert.Equal(ShortLinkErrorCodes.InvalidAlias, result.ErrorCode);
-    }
-
-    [Fact]
-    public async Task CreateAsync_RejectsDuplicateCustomAlias()
-    {
-        var repository = new InMemoryShortLinkRepository();
-        await repository.AddAsync(new ShortLink("taken", new Uri("https://example.com"), DateTimeOffset.UtcNow));
-        var service = CreateService(repository);
-
-        var result = await service.CreateAsync(new CreateShortLinkRequest("https://openai.com", "taken"));
-
-        Assert.False(result.Succeeded);
-        Assert.Equal(ShortLinkErrorCodes.DuplicateAlias, result.ErrorCode);
-    }
-
-    [Fact]
-    public async Task CreateAsync_UsesCustomAliasWhenValid()
-    {
-        var repository = new InMemoryShortLinkRepository();
-        var service = CreateService(repository);
-
-        var result = await service.CreateAsync(new CreateShortLinkRequest("https://example.com/path", "docs_1"));
-
-        Assert.True(result.Succeeded);
-        Assert.NotNull(result.ShortLink);
-        Assert.Equal("docs_1", result.ShortLink.Code);
-        Assert.True(await repository.ExistsByCodeAsync("docs_1"));
-    }
-
-    [Fact]
     public async Task CreateAsync_GeneratesUniqueDefaultCode()
     {
         var repository = new InMemoryShortLinkRepository();
@@ -98,6 +60,43 @@ public sealed class ShortLinkServiceTests
         Assert.True(result.Succeeded);
         Assert.False(resolveResult.Succeeded);
         Assert.Equal(ShortLinkErrorCodes.Inactive, resolveResult.ErrorCode);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ChangesDestinationAndClearsCache()
+    {
+        var repository = new InMemoryShortLinkRepository();
+        var cache = new InMemoryShortLinkCache();
+        var shortLink = new ShortLink("edit001", new Uri("https://example.com/old"), DateTimeOffset.UtcNow);
+        await repository.AddAsync(shortLink);
+        await cache.SetAsync(shortLink);
+        var service = CreateService(repository, cache: cache);
+
+        var result = await service.UpdateAsync(
+            "edit001",
+            new UpdateShortLinkRequest("https://example.com/new"));
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("https://example.com/new", result.ShortLink?.OriginalUrl.AbsoluteUri.TrimEnd('/'));
+        Assert.Null(await cache.FindByCodeAsync("edit001"));
+    }
+
+    [Fact]
+    public async Task DeleteAsync_RemovesStoredLinkAndCache()
+    {
+        var repository = new InMemoryShortLinkRepository();
+        var cache = new InMemoryShortLinkCache();
+        var shortLink = new ShortLink("delete1", new Uri("https://example.com/delete"), DateTimeOffset.UtcNow);
+        await repository.AddAsync(shortLink);
+        await cache.SetAsync(shortLink);
+        var service = CreateService(repository, cache: cache);
+
+        var result = await service.DeleteAsync("delete1");
+        var details = await service.GetDetailsAsync("delete1");
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(ShortLinkErrorCodes.NotFound, details.ErrorCode);
+        Assert.Null(await cache.FindByCodeAsync("delete1"));
     }
 
     [Fact]
@@ -167,6 +166,18 @@ public sealed class ShortLinkServiceTests
 
         public int FindByCodeCallCount { get; private set; }
 
+        public Task<IReadOnlyList<ShortLink>> ListRecentAsync(
+            int limit,
+            CancellationToken cancellationToken = default)
+        {
+            var result = links.Values
+                .OrderByDescending(link => link.CreatedAt)
+                .Take(limit)
+                .ToList();
+
+            return Task.FromResult<IReadOnlyList<ShortLink>>(result);
+        }
+
         public Task<ShortLink?> FindByCodeAsync(string code, CancellationToken cancellationToken = default)
         {
             FindByCodeCallCount++;
@@ -186,6 +197,12 @@ public sealed class ShortLinkServiceTests
         public Task UpdateAsync(ShortLink shortLink, CancellationToken cancellationToken = default)
         {
             links[shortLink.Code] = shortLink;
+            return Task.CompletedTask;
+        }
+
+        public Task DeleteAsync(string code, CancellationToken cancellationToken = default)
+        {
+            links.Remove(code);
             return Task.CompletedTask;
         }
     }

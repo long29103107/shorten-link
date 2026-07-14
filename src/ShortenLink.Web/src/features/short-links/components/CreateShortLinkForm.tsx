@@ -2,22 +2,23 @@ import { FormEvent, useMemo, useState } from "react";
 import { ApiError } from "../api/http";
 import { createShortLink } from "../api/shortLinksApi";
 import type { CreatedShortLink, ShortLinkFormInput } from "../types";
-import { shortLinkAliasPattern, toFriendlyErrorMessage } from "../types";
+import { toFriendlyErrorMessage } from "../types";
+import { Button } from "../../../shared/components/ui/button";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "../../../shared/components/ui/card";
+import { Input } from "../../../shared/components/ui/input";
+import { Label } from "../../../shared/components/ui/label";
 
 type CreateShortLinkFormProps = {
   onCreated: (createdLink: CreatedShortLink) => void;
-  onOpenDetails: (code: string) => void;
 };
 
 const initialForm: ShortLinkFormInput = {
   originalUrl: "",
-  customAlias: "",
   expiredAtLocal: ""
 };
 
 export function CreateShortLinkForm({
-  onCreated,
-  onOpenDetails
+  onCreated
 }: CreateShortLinkFormProps) {
   const [form, setForm] = useState(initialForm);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -35,10 +36,6 @@ export function CreateShortLinkForm({
       }
     } catch {
       return "The destination URL does not look valid yet.";
-    }
-
-    if (form.customAlias.trim() && !shortLinkAliasPattern.test(form.customAlias.trim())) {
-      return "Alias can use letters, numbers, underscores, and hyphens only.";
     }
 
     if (form.expiredAtLocal) {
@@ -65,7 +62,6 @@ export function CreateShortLinkForm({
     try {
       const createdLink = await createShortLink({
         originalUrl: form.originalUrl.trim(),
-        customAlias: form.customAlias.trim() || undefined,
         expiredAtUtc: form.expiredAtLocal
           ? new Date(form.expiredAtLocal).toISOString()
           : undefined
@@ -84,16 +80,17 @@ export function CreateShortLinkForm({
   };
 
   return (
-    <form className="panel panel-form" onSubmit={handleSubmit}>
-      <div className="panel-heading">
+    <Card className="panel-form">
+      <form onSubmit={handleSubmit}>
+      <CardHeader>
         <p className="eyebrow">Create</p>
-        <h2>Ship a short link in one pass.</h2>
-      </div>
+        <CardTitle>Ship a short link in one pass.</CardTitle>
+      </CardHeader>
 
-      <label className="field">
+      <CardContent>
+      <Label className="field">
         <span className="field-label">Destination URL</span>
-        <input
-          className="text-input"
+        <Input
           type="url"
           placeholder="https://example.com/really/long/path"
           value={form.originalUrl}
@@ -101,58 +98,37 @@ export function CreateShortLinkForm({
             setForm((current) => ({ ...current, originalUrl: event.target.value }))
           }
         />
-      </label>
+      </Label>
 
       <div className="field-grid">
-        <label className="field">
-          <span className="field-label">Custom alias</span>
-          <input
-            className="text-input"
-            placeholder="launch-kit"
-            value={form.customAlias}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, customAlias: event.target.value }))
-            }
-          />
-        </label>
-
-        <label className="field">
+        <Label className="field">
           <span className="field-label">Expiry</span>
-          <input
-            className="text-input"
+          <Input
             type="datetime-local"
             value={form.expiredAtLocal}
             onChange={(event) =>
               setForm((current) => ({ ...current, expiredAtLocal: event.target.value }))
             }
           />
-        </label>
+        </Label>
       </div>
 
       {errorMessage ? <p className="feedback feedback-error">{errorMessage}</p> : null}
+      </CardContent>
 
-      <div className="form-actions">
-        <button className="action-button" type="submit" disabled={isSubmitting}>
+      <CardFooter style={{ flexDirection: "row-reverse" }}>
+        <Button type="submit" disabled={isSubmitting}>
           {isSubmitting ? "Creating..." : "Create short link"}
-        </button>
-        <button
-          className="action-button action-button-secondary"
-          type="button"
+        </Button>
+        <Button
+          variant="secondary"
           onClick={() => setForm(initialForm)}
           disabled={isSubmitting}
         >
           Clear
-        </button>
-      </div>
-
-      <button
-        className="text-link"
-        type="button"
-        onClick={() => onOpenDetails(form.customAlias.trim() || "")}
-        disabled={!form.customAlias.trim()}
-      >
-        Jump to alias details
-      </button>
-    </form>
+        </Button>
+      </CardFooter>
+      </form>
+    </Card>
   );
 }
