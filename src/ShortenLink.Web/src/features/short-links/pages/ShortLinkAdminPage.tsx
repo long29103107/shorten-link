@@ -8,6 +8,7 @@ import {
   listShortLinks,
   updateShortLink
 } from "../api/shortLinksApi";
+import { getAdminPermissionState } from "../api/adminSecurity";
 import type { ShortLinkAdminItem } from "../types";
 import { formatDateTime, toFriendlyErrorMessage } from "../types";
 import { Badge } from "../../../shared/components/ui/badge";
@@ -77,13 +78,16 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
   const [isPageSizeMenuOpen, setIsPageSizeMenuOpen] = useState(false);
   const copyFeedbackTimeoutRef = useRef<number | null>(null);
   const pageSizeMenuRef = useRef<HTMLLabelElement | null>(null);
+  const adminPermissions = getAdminPermissionState();
 
   const selectedLinks = links.filter((link) => selectedCodes.has(link.code));
   const selectedCount = selectedCodes.size;
   const allPageCodes = links.map((link) => link.code);
   const isPageSelected = allPageCodes.length > 0 && allPageCodes.every((code) => selectedCodes.has(code));
-  const canBulkDeactivate = selectedLinks.some((link) => link.isActive);
-  const canBulkActivate = selectedLinks.some((link) => !link.isActive);
+  const canBulkDeactivate = adminPermissions.canDeactivate && selectedLinks.some((link) => link.isActive);
+  const canBulkActivate = adminPermissions.canActivate && selectedLinks.some((link) => !link.isActive);
+  const canBulkDelete = adminPermissions.canDelete;
+  const hasBulkActions = canBulkDeactivate || canBulkActivate || canBulkDelete;
   const shouldShowList = !isLoading && !errorMessage && links.length > 0;
   const editingLink = editingCode
     ? links.find((link) => link.code === editingCode) ?? null
@@ -232,6 +236,10 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
   };
 
   const startEdit = (link: ShortLinkAdminItem) => {
+    if (!adminPermissions.canUpdate) {
+      return;
+    }
+
     setIsCreating(false);
     setEditingCode(link.code);
     setOpenMenuCode(null);
@@ -246,6 +254,10 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
   };
 
   const startCreate = () => {
+    if (!adminPermissions.canCreate) {
+      return;
+    }
+
     const nextForm = { originalUrl: "", expiredAtLocal: "" };
     setIsCreating(true);
     setEditingCode(null);
@@ -508,6 +520,10 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
   };
 
   const requestDelete = (code: string) => {
+    if (!adminPermissions.canDelete) {
+      return;
+    }
+
     setOpenMenuCode(null);
     setConfirmAction({
       title: "Delete short link?",
@@ -519,6 +535,11 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
   };
 
   const requestStatusChange = (link: ShortLinkAdminItem) => {
+    if ((link.isActive && !adminPermissions.canDeactivate)
+      || (!link.isActive && !adminPermissions.canActivate)) {
+      return;
+    }
+
     setOpenMenuCode(null);
     setConfirmAction({
       title: link.isActive ? "Deactivate short link?" : "Activate short link?",
@@ -538,6 +559,10 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
   };
 
   const requestBulkDelete = () => {
+    if (!adminPermissions.canDelete) {
+      return;
+    }
+
     setConfirmAction({
       title: "Delete selected links?",
       description: `This will permanently delete ${selectedCount} selected link${selectedCount === 1 ? "" : "s"}. This action cannot be undone.`,
@@ -548,6 +573,11 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
   };
 
   const requestBulkStatusChange = (nextIsActive: boolean) => {
+    if ((nextIsActive && !adminPermissions.canActivate)
+      || (!nextIsActive && !adminPermissions.canDeactivate)) {
+      return;
+    }
+
     setConfirmAction({
       title: nextIsActive ? "Activate selected links?" : "Deactivate selected links?",
       description: nextIsActive
@@ -589,6 +619,11 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
     void loadLinks(Math.max(1, Math.min(nextPageNumber, totalPages)));
   };
 
+  const hasRowActions = (link: ShortLinkAdminItem) =>
+    adminPermissions.canUpdate
+    || (link.isActive ? adminPermissions.canDeactivate : adminPermissions.canActivate)
+    || adminPermissions.canDelete;
+
   return (
     <Card className="admin-panel">
       <CardHeader className="panel-heading-wide">
@@ -599,11 +634,17 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
           <CardTitle>Manage generated short links.</CardTitle>
           </div>
         </div>
-        <Button onClick={startCreate}>Create</Button>
+        <Button
+          disabled={!adminPermissions.canCreate}
+          title={adminPermissions.canCreate ? "Create" : "Missing short_links.create permission"}
+          onClick={startCreate}
+        >
+          Create
+        </Button>
       </CardHeader>
 
       <CardContent>
-      {shouldShowList && selectedCount > 0 ? (
+      {shouldShowList && selectedCount > 0 && hasBulkActions ? (
       <div className="admin-bulk-bar">
         <div className="admin-toolbar-group">
           {canBulkDeactivate ? (
@@ -624,6 +665,7 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
             {isBulkUpdating ? "Updating..." : `Activate selected (${selectedCount})`}
           </Button>
           ) : null}
+          {canBulkDelete ? (
           <Button
             variant="destructive"
             disabled={isBulkDeleting || isBulkUpdating}
@@ -631,6 +673,7 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
           >
             {isBulkDeleting ? "Deleting..." : `Delete selected (${selectedCount})`}
           </Button>
+          ) : null}
           <Button
             variant="secondary"
             disabled={isBulkDeleting || isBulkUpdating}
@@ -745,6 +788,7 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
                       >
                         <span aria-hidden="true" />
                       </button>
+                      {hasRowActions(link) ? (
                       <DropdownMenu
                         open={openMenuCode === link.code}
                         onOpenChange={(open) =>
@@ -759,9 +803,14 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
                         </DropdownMenuTrigger>
                         {openMenuCode === link.code ? (
                           <DropdownMenuContent>
+                            {adminPermissions.canUpdate ? (
                             <DropdownMenuItem onClick={() => startEdit(link)}>
                               Edit
                             </DropdownMenuItem>
+                            ) : null}
+                            {(link.isActive
+                              ? adminPermissions.canDeactivate
+                              : adminPermissions.canActivate) ? (
                             <DropdownMenuItem
                               disabled={busyCode === link.code}
                               onClick={() => requestStatusChange(link)}
@@ -772,6 +821,8 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
                                   ? "Deactivate"
                                   : "Activate"}
                             </DropdownMenuItem>
+                            ) : null}
+                            {adminPermissions.canDelete ? (
                             <DropdownMenuItem
                               className="danger-link"
                               disabled={busyCode === link.code}
@@ -779,9 +830,11 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
                             >
                               Delete
                             </DropdownMenuItem>
+                            ) : null}
                           </DropdownMenuContent>
                         ) : null}
                       </DropdownMenu>
+                      ) : null}
                     </div>
                   </TableCell>
                 </TableRow>

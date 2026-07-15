@@ -167,6 +167,46 @@ public sealed class ShortLinkEndpointsTests
     }
 
     [Fact]
+    public async Task AdminMutations_ReturnUnauthorizedWhenSecurityEnabledAndApiKeyMissing()
+    {
+        await using var factory = new ShortLinkApiFactory(
+            enableFrontendFallback: false,
+            securityEnabled: true);
+        using var client = factory.CreateClient();
+
+        foreach (var request in CreateAdminMutationRequests())
+        {
+            using var response = await client.SendAsync(request);
+            var payload = await response.Content.ReadFromJsonAsync<ShortLinkErrorResponse>();
+
+            Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+            Assert.NotNull(payload);
+            Assert.Equal("unauthorized", payload.ErrorCode);
+        }
+    }
+
+    [Fact]
+    public async Task AdminMutations_ReturnForbiddenWhenApiKeyLacksMutationPermissions()
+    {
+        await using var factory = new ShortLinkApiFactory(
+            enableFrontendFallback: false,
+            securityEnabled: true,
+            securityRoles: new[] { ShortenLinkRoles.Viewer });
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-ShortenLink-Api-Key", "test-admin-key");
+
+        foreach (var request in CreateAdminMutationRequests())
+        {
+            using var response = await client.SendAsync(request);
+            var payload = await response.Content.ReadFromJsonAsync<ShortLinkErrorResponse>();
+
+            Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+            Assert.NotNull(payload);
+            Assert.Equal("forbidden", payload.ErrorCode);
+        }
+    }
+
+    [Fact]
     public async Task GetList_ReturnsCursorForNextPage()
     {
         await using var factory = new ShortLinkApiFactory(enableFrontendFallback: false);
@@ -990,6 +1030,29 @@ public sealed class ShortLinkEndpointsTests
         Assert.NotNull(payload);
 
         return payload;
+    }
+
+    private static IEnumerable<HttpRequestMessage> CreateAdminMutationRequests()
+    {
+        yield return new HttpRequestMessage(HttpMethod.Post, "/api/short-links")
+        {
+            Content = JsonContent.Create(new
+            {
+                originalUrl = "https://example.com/secure-create",
+                expiredAtUtc = new DateTimeOffset(2026, 7, 20, 0, 0, 0, TimeSpan.Zero)
+            })
+        };
+        yield return new HttpRequestMessage(HttpMethod.Put, "/api/short-links/missing")
+        {
+            Content = JsonContent.Create(new
+            {
+                originalUrl = "https://example.com/secure-update",
+                expiredAtUtc = new DateTimeOffset(2026, 7, 20, 0, 0, 0, TimeSpan.Zero)
+            })
+        };
+        yield return new HttpRequestMessage(HttpMethod.Post, "/api/short-links/missing/activate");
+        yield return new HttpRequestMessage(HttpMethod.Post, "/api/short-links/missing/deactivate");
+        yield return new HttpRequestMessage(HttpMethod.Delete, "/api/short-links/missing");
     }
 
     private sealed class FixedTimeProvider : TimeProvider

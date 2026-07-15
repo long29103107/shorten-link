@@ -317,6 +317,18 @@ Security is disabled by default for local demo convenience. To protect admin API
 
 When security is enabled, missing credentials return `401 unauthorized`; valid credentials without the required permission return `403 forbidden`. The React app routes those outcomes to `/unauthorized` and `/forbidden`.
 
+For local frontend development, configure the React app with Vite environment variables instead of hard-coding secrets:
+
+```dotenv
+VITE_SHORTENLINK_ADMIN_API_KEY=dev-owner-key
+VITE_SHORTENLINK_ADMIN_API_KEY_HEADER=X-ShortenLink-Api-Key
+VITE_SHORTENLINK_ADMIN_ROLE=Owner
+```
+
+`VITE_SHORTENLINK_ADMIN_ROLE` accepts the built-in system role bundles `Owner`, `Admin`, `Editor`, and `Viewer`. The admin UI uses that value to hide or disable create, edit, activate, deactivate, and delete controls when the matching permission is missing. For permission-level testing, use `VITE_SHORTENLINK_ADMIN_PERMISSIONS` with comma-separated permission names such as `short_links.read,short_links.create`.
+
+If no frontend role or permission variables are set, the UI keeps all admin controls available for the default disabled-security demo mode. The API still enforces authorization whenever backend security is enabled.
+
 ### Direct Service Usage
 
 Application services can depend on the reusable `IShortLinkService` contract directly. The intended shape is:

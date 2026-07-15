@@ -125,11 +125,18 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
     private static async Task<Results<Created<ShortLinkCreatedResponse>, JsonHttpResult<ShortLinkErrorResponse>>> CreateShortLinkAsync(
         ShortLinkCreateRequest request,
         IShortLinkService shortLinkService,
+        IShortenLinkAuthorizationService authorizationService,
         IOptions<ShortenLinkOptions> options,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
+
+        var authorization = authorizationService.Authorize(httpContext, ShortenLinkPermissions.ShortLinksCreate);
+        if (!authorization.Succeeded)
+        {
+            return CreateAuthorizationErrorResponse(authorization);
+        }
 
         var result = await shortLinkService.CreateAsync(
             new CreateShortLinkRequest(request.OriginalUrl, request.ExpiredAtUtc),
@@ -165,11 +172,18 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
         string code,
         ShortLinkUpdateRequest request,
         IShortLinkService shortLinkService,
+        IShortenLinkAuthorizationService authorizationService,
         IOptions<ShortenLinkOptions> options,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
+
+        var authorization = authorizationService.Authorize(httpContext, ShortenLinkPermissions.ShortLinksUpdate);
+        if (!authorization.Succeeded)
+        {
+            return CreateAuthorizationErrorResponse(authorization);
+        }
 
         var result = await shortLinkService.UpdateAsync(
             code,
@@ -188,8 +202,16 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
     private static async Task<Results<Ok<ShortLinkDeactivatedResponse>, JsonHttpResult<ShortLinkErrorResponse>>> DeactivateShortLinkAsync(
         string code,
         IShortLinkService shortLinkService,
+        IShortenLinkAuthorizationService authorizationService,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
+        var authorization = authorizationService.Authorize(httpContext, ShortenLinkPermissions.ShortLinksDeactivate);
+        if (!authorization.Succeeded)
+        {
+            return CreateAuthorizationErrorResponse(authorization);
+        }
+
         var result = await shortLinkService.DeactivateAsync(code, cancellationToken).ConfigureAwait(false);
         if (!result.Succeeded)
         {
@@ -202,8 +224,16 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
     private static async Task<Results<Ok<ShortLinkDeactivatedResponse>, JsonHttpResult<ShortLinkErrorResponse>>> ActivateShortLinkAsync(
         string code,
         IShortLinkService shortLinkService,
+        IShortenLinkAuthorizationService authorizationService,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
+        var authorization = authorizationService.Authorize(httpContext, ShortenLinkPermissions.ShortLinksActivate);
+        if (!authorization.Succeeded)
+        {
+            return CreateAuthorizationErrorResponse(authorization);
+        }
+
         var result = await shortLinkService.ActivateAsync(code, cancellationToken).ConfigureAwait(false);
         if (!result.Succeeded)
         {
@@ -216,8 +246,16 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
     private static async Task<Results<Ok<ShortLinkDeletedResponse>, JsonHttpResult<ShortLinkErrorResponse>>> DeleteShortLinkAsync(
         string code,
         IShortLinkService shortLinkService,
+        IShortenLinkAuthorizationService authorizationService,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
+        var authorization = authorizationService.Authorize(httpContext, ShortenLinkPermissions.ShortLinksDelete);
+        if (!authorization.Succeeded)
+        {
+            return CreateAuthorizationErrorResponse(authorization);
+        }
+
         var result = await shortLinkService.DeleteAsync(code, cancellationToken).ConfigureAwait(false);
         if (!result.Succeeded)
         {

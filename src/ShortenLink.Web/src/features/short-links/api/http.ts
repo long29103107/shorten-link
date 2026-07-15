@@ -1,5 +1,6 @@
 import type { ApiErrorPayload } from "../types";
 import { showToast } from "../../../shared/toast";
+import { getAdminApiKeyHeader } from "./adminSecurity";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -18,6 +19,7 @@ export async function fetchJson<T>(input: RequestInfo | URL, init?: RequestInit)
     ...init,
     headers: {
       "Content-Type": "application/json",
+      ...getAdminApiKeyHeader(),
       ...(init?.headers ?? {})
     }
   });

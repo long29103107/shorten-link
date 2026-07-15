@@ -1,4 +1,6 @@
 :root {
+  --sidebar-width: 282px;
+  --content-x-padding: 64px;
   --bg: #171717;
   --sidebar: #222222;
   --card: #262626;
@@ -52,7 +54,7 @@ code {
 .app-shell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 282px minmax(0, 1fr);
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
   background:
     linear-gradient(rgba(238, 104, 76, 0.045) 1px, transparent 1px),
     linear-gradient(90deg, rgba(238, 104, 76, 0.045) 1px, transparent 1px),
@@ -163,7 +165,7 @@ code {
 
 .app-main {
   min-width: 0;
-  padding: 10px 32px 48px;
+  padding: 10px calc(var(--content-x-padding) / 2) 48px;
 }
 
 .topbar {
@@ -171,9 +173,9 @@ code {
   justify-content: space-between;
   gap: 24px;
   align-items: start;
+  width: min(100%, calc(100vw - var(--sidebar-width) - var(--content-x-padding)));
   min-height: 86px;
-  max-width: 1280px;
-  margin: 0 auto 12px;
+  margin: 0 0 12px;
 }
 
 .eyebrow {
@@ -200,8 +202,8 @@ code {
 }
 
 .workspace {
-  max-width: 1280px;
-  margin: 0 auto;
+  width: min(100%, calc(100vw - var(--sidebar-width) - var(--content-x-padding)));
+  margin: 0;
 }
 
 .workspace-grid {
@@ -1255,6 +1257,10 @@ code {
 }
 
 @media (max-width: 980px) {
+  :root {
+    --content-x-padding: 36px;
+  }
+
   .app-shell {
     grid-template-columns: 1fr;
   }
@@ -1269,7 +1275,12 @@ code {
   }
 
   .topbar {
+    width: 100%;
     min-height: auto;
+  }
+
+  .workspace {
+    width: 100%;
   }
 
   .workspace-grid {

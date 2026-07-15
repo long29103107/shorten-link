@@ -4,9 +4,9 @@ title: Security And Permission-Based Admin Protection
 status: active
 created_at: 2026-07-15
 updated_at: 2026-07-15
-current_task:
-task_count: 1
-done_count: 1
+current_task: 011_004
+task_count: 4
+done_count: 3
 depends_on:
   - 010
 ---
@@ -52,18 +52,23 @@ Out:
 | Task | Title | Status | Done At |
 |---|---|---|---|
 | 011_001 | Permission catalog and admin authorization foundation | done | 2026-07-15T20:47:00+07:00 |
+| 011_002 | Apply permissions to admin mutation endpoints | done | 2026-07-15T20:58:07+07:00 |
+| 011_003 | Admin UI permission-aware credential flow | done | 2026-07-15T21:27:51+07:00 |
+| 011_004 | Persist system role security assignments | planned | |
 
 ## Current Task
 
-No active task.
+`011_004 - Persist system role security assignments`
 
 ## Completed Notes
 
 - `011_001` established permission constants, role bundles, API-key permission evaluation, a protected admin list endpoint, frontend `401`/`403` routing, README security docs, and tests for role bundles plus protected endpoint outcomes.
+- `011_002` applied matching permissions to create, update, activate, deactivate, and delete endpoints, with tests for `401` and `403` mutation behavior.
+- `011_003` added frontend admin API-key header configuration, frontend permission bundles for Owner/Admin/Editor/Viewer, permission-aware admin mutation controls, and README documentation for local credential setup.
 
 ## Next Task Proposal
 
-Next task should apply the permission boundary across admin mutations: create, update, activate, deactivate, and delete.
+Implement `011_004` if Phase 011 still needs durable role assignment. `011_004` should keep Owner, Admin, Editor, and Viewer as built-in system roles, persist assignments only, and keep permissions as the source of truth.
 
 ## Scan Rule
 
