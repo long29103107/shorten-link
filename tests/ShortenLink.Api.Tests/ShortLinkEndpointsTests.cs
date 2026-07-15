@@ -107,6 +107,66 @@ public sealed class ShortLinkEndpointsTests
     }
 
     [Fact]
+    public async Task GetList_ReturnsUnauthorizedWhenSecurityEnabledAndApiKeyMissing()
+    {
+        await using var factory = new ShortLinkApiFactory(
+            enableFrontendFallback: false,
+            securityEnabled: true);
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync("/api/short-links?limit=10");
+        var payload = await response.Content.ReadFromJsonAsync<ShortLinkErrorResponse>();
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.NotNull(payload);
+        Assert.Equal("unauthorized", payload.ErrorCode);
+    }
+
+    [Fact]
+    public async Task GetList_ReturnsForbiddenWhenApiKeyLacksReadPermission()
+    {
+        await using var factory = new ShortLinkApiFactory(
+            enableFrontendFallback: false,
+            securityEnabled: true,
+            securityRoles: Array.Empty<string>(),
+            securityPermissions: Array.Empty<string>());
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-ShortenLink-Api-Key", "test-admin-key");
+
+        using var response = await client.GetAsync("/api/short-links?limit=10");
+        var payload = await response.Content.ReadFromJsonAsync<ShortLinkErrorResponse>();
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.NotNull(payload);
+        Assert.Equal("forbidden", payload.ErrorCode);
+    }
+
+    [Fact]
+    public async Task GetList_ReturnsOkWhenApiKeyHasViewerRole()
+    {
+        await using var factory = new ShortLinkApiFactory(
+            enableFrontendFallback: false,
+            securityEnabled: true,
+            securityRoles: new[] { ShortenLinkRoles.Viewer });
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-ShortenLink-Api-Key", "test-admin-key");
+
+        using var response = await client.GetAsync("/api/short-links?limit=10");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public void SecurityRoles_ArePermissionBundles()
+    {
+        var viewerPermissions = ShortenLinkRoles.PermissionBundles[ShortenLinkRoles.Viewer];
+
+        Assert.Contains(ShortenLinkPermissions.ShortLinksRead, viewerPermissions);
+        Assert.Contains(ShortenLinkPermissions.AnalyticsRead, viewerPermissions);
+        Assert.DoesNotContain(ShortenLinkPermissions.ShortLinksDelete, viewerPermissions);
+    }
+
+    [Fact]
     public async Task GetList_ReturnsCursorForNextPage()
     {
         await using var factory = new ShortLinkApiFactory(enableFrontendFallback: false);
@@ -751,6 +811,10 @@ public sealed class ShortLinkEndpointsTests
         private readonly bool rateLimitingEnabled;
         private readonly int createPermitLimit;
         private readonly int redirectPermitLimit;
+        private readonly bool securityEnabled;
+        private readonly string securityApiKey;
+        private readonly IReadOnlyList<string> securityRoles;
+        private readonly IReadOnlyList<string> securityPermissions;
 
         public ShortLinkApiFactory(
             bool enableFrontendFallback,
@@ -760,7 +824,11 @@ public sealed class ShortLinkEndpointsTests
             string cacheProvider = "Memory",
             bool rateLimitingEnabled = false,
             int createPermitLimit = 60,
-            int redirectPermitLimit = 120)
+            int redirectPermitLimit = 120,
+            bool securityEnabled = false,
+            string securityApiKey = "test-admin-key",
+            IReadOnlyList<string>? securityRoles = null,
+            IReadOnlyList<string>? securityPermissions = null)
         {
             this.enableFrontendFallback = enableFrontendFallback;
             this.frontendFallbackPath = frontendFallbackPath;
@@ -770,6 +838,10 @@ public sealed class ShortLinkEndpointsTests
             this.rateLimitingEnabled = rateLimitingEnabled;
             this.createPermitLimit = createPermitLimit;
             this.redirectPermitLimit = redirectPermitLimit;
+            this.securityEnabled = securityEnabled;
+            this.securityApiKey = securityApiKey;
+            this.securityRoles = securityRoles ?? new[] { ShortenLinkRoles.Owner };
+            this.securityPermissions = securityPermissions ?? Array.Empty<string>();
         }
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -799,8 +871,41 @@ public sealed class ShortLinkEndpointsTests
                     ["ShortenLink:RateLimiting:Create:QueueLimit"] = "0",
                     ["ShortenLink:RateLimiting:Redirect:PermitLimit"] = redirectPermitLimit.ToString(),
                     ["ShortenLink:RateLimiting:Redirect:WindowSeconds"] = "60",
-                    ["ShortenLink:RateLimiting:Redirect:QueueLimit"] = "0"
+                    ["ShortenLink:RateLimiting:Redirect:QueueLimit"] = "0",
+                    ["ShortenLink:Security:Enabled"] = securityEnabled.ToString(),
+                    ["ShortenLink:Security:HeaderName"] = "X-ShortenLink-Api-Key",
+                    ["ShortenLink:Security:ApiKeys:0:Name"] = "test-admin",
+                    ["ShortenLink:Security:ApiKeys:0:Key"] = securityApiKey
                 });
+                for (var index = 0; index < securityRoles.Count; index++)
+                {
+                    configurationBuilder.AddInMemoryCollection(new Dictionary<string, string?>
+                    {
+                        [$"ShortenLink:Security:ApiKeys:0:Roles:{index}"] = securityRoles[index]
+                    });
+                }
+                if (securityRoles.Count == 0)
+                {
+                    configurationBuilder.AddInMemoryCollection(new Dictionary<string, string?>
+                    {
+                        ["ShortenLink:Security:ApiKeys:0:Roles:0"] = string.Empty
+                    });
+                }
+
+                for (var index = 0; index < securityPermissions.Count; index++)
+                {
+                    configurationBuilder.AddInMemoryCollection(new Dictionary<string, string?>
+                    {
+                        [$"ShortenLink:Security:ApiKeys:0:Permissions:{index}"] = securityPermissions[index]
+                    });
+                }
+                if (securityPermissions.Count == 0)
+                {
+                    configurationBuilder.AddInMemoryCollection(new Dictionary<string, string?>
+                    {
+                        ["ShortenLink:Security:ApiKeys:0:Permissions:0"] = string.Empty
+                    });
+                }
             });
             builder.ConfigureServices(services =>
             {
@@ -850,7 +955,12 @@ public sealed class ShortLinkEndpointsTests
                 ["ShortenLink:RateLimiting:Create:QueueLimit"] = "0",
                 ["ShortenLink:RateLimiting:Redirect:PermitLimit"] = "120",
                 ["ShortenLink:RateLimiting:Redirect:WindowSeconds"] = "60",
-                ["ShortenLink:RateLimiting:Redirect:QueueLimit"] = "0"
+                ["ShortenLink:RateLimiting:Redirect:QueueLimit"] = "0",
+                ["ShortenLink:Security:Enabled"] = "false",
+                ["ShortenLink:Security:HeaderName"] = "X-ShortenLink-Api-Key",
+                ["ShortenLink:Security:ApiKeys:0:Name"] = "test-admin",
+                ["ShortenLink:Security:ApiKeys:0:Key"] = "test-admin-key",
+                ["ShortenLink:Security:ApiKeys:0:Roles:0"] = ShortenLinkRoles.Owner
             })
             .AddInMemoryCollection(overrides)
             .Build();

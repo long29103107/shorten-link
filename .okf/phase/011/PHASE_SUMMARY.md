@@ -1,12 +1,12 @@
 ---
 phase: 011
 title: Security And Permission-Based Admin Protection
-status: planned
+status: active
 created_at: 2026-07-15
 updated_at: 2026-07-15
-current_task: 011_001
+current_task:
 task_count: 1
-done_count: 0
+done_count: 1
 depends_on:
   - 010
 ---
@@ -51,19 +51,19 @@ Out:
 
 | Task | Title | Status | Done At |
 |---|---|---|---|
-| 011_001 | Permission catalog and admin authorization foundation | planned | |
+| 011_001 | Permission catalog and admin authorization foundation | done | 2026-07-15T20:47:00+07:00 |
 
 ## Current Task
 
-`011_001 - Permission catalog and admin authorization foundation`
+No active task.
 
 ## Completed Notes
 
-No phase tasks are complete yet.
+- `011_001` established permission constants, role bundles, API-key permission evaluation, a protected admin list endpoint, frontend `401`/`403` routing, README security docs, and tests for role bundles plus protected endpoint outcomes.
 
 ## Next Task Proposal
 
-Start with `011_001` to define the permission catalog, role grouping, and the smallest protected admin endpoint path. Do not add external identity providers in this task.
+Next task should apply the permission boundary across admin mutations: create, update, activate, deactivate, and delete.
 
 ## Scan Rule
 

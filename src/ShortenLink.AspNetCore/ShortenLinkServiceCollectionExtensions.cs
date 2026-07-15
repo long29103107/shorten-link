@@ -59,6 +59,9 @@ public static class ShortenLinkServiceCollectionExtensions
                 static options => HasValidRateLimit(options.RateLimiting.Create)
                     && HasValidRateLimit(options.RateLimiting.Redirect),
                 "ShortenLink:RateLimiting create and redirect policies require PermitLimit > 0, WindowSeconds > 0, and QueueLimit >= 0.")
+            .Validate(
+                static options => !options.Security.Enabled || HasValidSecurityOptions(options.Security),
+                "ShortenLink:Security requires HeaderName and at least one API key when enabled.")
             .ValidateOnStart();
 
         services.AddDbContext<ShortLinkDbContext>((serviceProvider, options) =>
@@ -81,6 +84,7 @@ public static class ShortenLinkServiceCollectionExtensions
         services.TryAddScoped<IShortLinkRepository, EfCoreShortLinkRepository>();
         services.TryAddScoped<IShortLinkClickRepository, EfCoreShortLinkClickRepository>();
         services.TryAddScoped<IShortLinkService, ShortLinkService>();
+        services.TryAddSingleton<IShortenLinkAuthorizationService, ShortenLinkAuthorizationService>();
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<IHostedService, ShortLinkDatabaseInitializationService>());
 
@@ -256,5 +260,13 @@ public static class ShortenLinkServiceCollectionExtensions
         return options.PermitLimit > 0
             && options.WindowSeconds > 0
             && options.QueueLimit >= 0;
+    }
+
+    private static bool HasValidSecurityOptions(ShortenLinkSecurityOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        return !string.IsNullOrWhiteSpace(options.HeaderName)
+            && options.ApiKeys.Any(static key => !string.IsNullOrWhiteSpace(key.Key));
     }
 }

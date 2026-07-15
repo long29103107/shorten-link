@@ -3,9 +3,9 @@ id: 011_001
 phase: 011
 task: 001
 title: Permission catalog and admin authorization foundation
-status: planned
+status: done
 created_at: 2026-07-15
-completed_at:
+completed_at: 2026-07-15T20:47:00+07:00
 owner: codex
 type: security
 priority: high
@@ -106,4 +106,15 @@ npm run build
 
 ## Done Notes
 
-Not started.
+- Added `ShortenLinkPermissions` constants and `ShortenLinkRoles` permission bundles for Owner, Admin, Editor, and Viewer.
+- Added API-key based `IShortenLinkAuthorizationService` that evaluates permissions, with roles acting only as permission bundles.
+- Added `ShortenLink:Security` options with local-demo defaults and validation when security is enabled.
+- Protected `GET /api/short-links` with `short_links.read` when security is enabled.
+- Added stable JSON `401 unauthorized` and `403 forbidden` responses for missing or under-permissioned API keys.
+- Updated frontend fetch handling so `401` routes to `/unauthorized` and `403` routes to `/forbidden`.
+- Documented the local permission-based security model in README.
+- Verification:
+  - `npm run build` passed in `src/ShortenLink.Web`.
+  - `dotnet build ShortenLink.slnx --verbosity minimal` passed.
+  - `dotnet test tests\ShortenLink.Api.Tests\ShortenLink.Api.Tests.csproj --verbosity minimal` passed.
+  - `dotnet test ShortenLink.slnx --verbosity minimal` passed.

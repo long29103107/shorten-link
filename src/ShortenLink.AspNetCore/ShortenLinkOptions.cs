@@ -15,6 +15,8 @@ public sealed class ShortenLinkOptions
     public ShortenLinkCacheOptions Cache { get; set; } = new();
 
     public ShortenLinkRateLimitingOptions RateLimiting { get; set; } = new();
+
+    public ShortenLinkSecurityOptions Security { get; set; } = new();
 }
 
 public sealed class ShortenLinkDatabaseOptions
@@ -69,4 +71,24 @@ public sealed class ShortenLinkFixedWindowRateLimitOptions
     public int WindowSeconds { get; set; } = 60;
 
     public int QueueLimit { get; set; }
+}
+
+public sealed class ShortenLinkSecurityOptions
+{
+    public bool Enabled { get; set; }
+
+    public string HeaderName { get; set; } = "X-ShortenLink-Api-Key";
+
+    public IList<ShortenLinkApiKeyOptions> ApiKeys { get; set; } = new List<ShortenLinkApiKeyOptions>();
+}
+
+public sealed class ShortenLinkApiKeyOptions
+{
+    public string Name { get; set; } = string.Empty;
+
+    public string Key { get; set; } = string.Empty;
+
+    public IList<string> Roles { get; set; } = new List<string>();
+
+    public IList<string> Permissions { get; set; } = new List<string>();
 }

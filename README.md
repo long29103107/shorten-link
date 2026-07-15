@@ -287,10 +287,35 @@ Minimum `appsettings.json` configuration for SQLite default mode:
         "WindowSeconds": 60,
         "QueueLimit": 0
       }
+    },
+    "Security": {
+      "Enabled": false,
+      "HeaderName": "X-ShortenLink-Api-Key",
+      "ApiKeys": [
+        {
+          "Name": "local-owner",
+          "Key": "dev-owner-key",
+          "Roles": [ "Owner" ],
+          "Permissions": []
+        }
+      ]
     }
   }
 }
 ```
+
+### Admin Security
+
+Admin security is permission-based. Roles are only bundles of permissions:
+
+- `Owner`: all permissions.
+- `Admin`: manage links plus analytics and audit-log read access.
+- `Editor`: read, create, update, activate, and deactivate links.
+- `Viewer`: read links and analytics.
+
+Security is disabled by default for local demo convenience. To protect admin API routes, set `ShortenLink:Security:Enabled` to `true` and send the configured API key header, which defaults to `X-ShortenLink-Api-Key`.
+
+When security is enabled, missing credentials return `401 unauthorized`; valid credentials without the required permission return `403 forbidden`. The React app routes those outcomes to `/unauthorized` and `/forbidden`.
 
 ### Direct Service Usage
 

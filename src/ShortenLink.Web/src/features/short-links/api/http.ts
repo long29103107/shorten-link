@@ -35,6 +35,11 @@ export async function fetchJson<T>(input: RequestInfo | URL, init?: RequestInit)
     message: `Request failed with status ${response.status}.`
   };
 
+  if (response.status === 401 || response.status === 403) {
+    navigateToStatusPage(response.status);
+    throw new ApiError(response.status, payload);
+  }
+
   showToast({
     title: "Request failed",
     message: payload.message,
@@ -50,4 +55,13 @@ async function safeReadError(response: Response): Promise<ApiErrorPayload | null
   } catch {
     return null;
   }
+}
+
+function navigateToStatusPage(status: number) {
+  const path = status === 401 ? "/unauthorized" : "/forbidden";
+  if (window.location.pathname !== path) {
+    window.history.pushState({}, "", path);
+  }
+
+  window.dispatchEvent(new PopStateEvent("popstate"));
 }

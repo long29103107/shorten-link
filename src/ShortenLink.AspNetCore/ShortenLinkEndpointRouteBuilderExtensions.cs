@@ -60,6 +60,7 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
 
     private static async Task<Results<Ok<ShortLinkAdminListResponse>, JsonHttpResult<ShortLinkErrorResponse>>> ListShortLinksAsync(
         IShortLinkService shortLinkService,
+        IShortenLinkAuthorizationService authorizationService,
         IOptions<ShortenLinkOptions> options,
         HttpContext httpContext,
         int? limit,
@@ -67,6 +68,12 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
         string? cursor,
         CancellationToken cancellationToken)
     {
+        var authorization = authorizationService.Authorize(httpContext, ShortenLinkPermissions.ShortLinksRead);
+        if (!authorization.Succeeded)
+        {
+            return CreateAuthorizationErrorResponse(authorization);
+        }
+
         var safeLimit = Math.Clamp(limit ?? 100, 1, 500);
         if (page is not null)
         {
@@ -261,6 +268,20 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
             errorMessage ?? "An unexpected short-link error occurred.");
 
         return TypedResults.Json(response, statusCode: GetStatusCode(response.ErrorCode));
+    }
+
+    private static JsonHttpResult<ShortLinkErrorResponse> CreateAuthorizationErrorResponse(
+        ShortenLinkAuthorizationResult authorization)
+    {
+        var response = new ShortLinkErrorResponse(
+            authorization.ErrorCode ?? "forbidden",
+            authorization.ErrorMessage ?? "The request is not authorized.");
+
+        return TypedResults.Json(
+            response,
+            statusCode: authorization.IsAuthenticated
+                ? StatusCodes.Status403Forbidden
+                : StatusCodes.Status401Unauthorized);
     }
 
     private static IResult CreateErrorResult(string? errorCode, string? errorMessage) =>
