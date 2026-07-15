@@ -3,9 +3,9 @@ id: 009_001
 phase: 009
 task: 001
 title: NuGet.org publish preflight checklist
-status: planned
+status: done
 created_at: 2026-07-15
-completed_at:
+completed_at: 2026-07-15
 owner: codex
 type: release-preflight
 priority: high
@@ -106,4 +106,7 @@ Do not run a real `dotnet nuget push` against NuGet.org for this task.
 
 ## Done Notes
 
-- Not started.
+- Added `docs\nuget-publish-preflight.md` with maintainer-facing local gates, external NuGet.org prerequisites, credential handling, go/no-go outcomes, package ID/version review, and post-publish checks.
+- Linked the preflight from `README.md` release and manual publish sections.
+- Updated `docs\release-readiness-closure.md` so release readiness distinguishes repository-ready evidence from external NuGet.org facts.
+- Verification was docs-only: read back the changed documentation and task bookkeeping. No publish command or package push was run.

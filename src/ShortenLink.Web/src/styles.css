@@ -288,6 +288,16 @@ code {
   font-weight: 800;
 }
 
+.required-marker {
+  color: var(--accent-strong);
+}
+
+.field-error {
+  color: var(--danger);
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
 .ui-input {
   width: 100%;
   min-height: 42px;
@@ -305,6 +315,11 @@ code {
 .ui-input:focus {
   border-color: rgba(238, 104, 76, 0.7);
   box-shadow: 0 0 0 4px var(--focus);
+}
+
+.ui-input[aria-invalid="true"] {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 4px rgba(255, 93, 93, 0.14);
 }
 
 .expiry-quick-picks {
@@ -1051,10 +1066,11 @@ code {
   position: fixed;
   right: 20px;
   top: 20px;
-  z-index: 200;
+  z-index: 500;
   display: grid;
   width: min(380px, calc(100vw - 32px));
   gap: 10px;
+  pointer-events: none;
 }
 
 .toast {
@@ -1063,15 +1079,15 @@ code {
   gap: 12px;
   justify-content: space-between;
   overflow: hidden;
-  border: 1px solid var(--border-strong);
-  border-left: 4px solid var(--success);
+  border: 1px solid var(--toast-border);
+  border-left: 4px solid var(--toast-border);
   border-radius: 8px;
-  background: rgba(32, 32, 32, 0.96);
+  background: color-mix(in srgb, var(--toast-background), #181818 82%);
   padding: 12px 12px 12px 14px;
-  color: var(--text);
+  color: var(--toast-color);
   box-shadow: 0 20px 48px rgba(0, 0, 0, 0.36);
-  backdrop-filter: blur(8px);
   animation: toast-slide-in 220ms ease-out;
+  pointer-events: auto;
 }
 
 .toast::after {
@@ -1080,34 +1096,10 @@ code {
   bottom: 0;
   left: 0;
   height: 3px;
-  background: var(--success);
+  background: var(--toast-border);
   content: "";
   transform-origin: left;
   animation: toast-countdown 4500ms linear forwards;
-}
-
-.toast-error {
-  border-left-color: var(--danger);
-}
-
-.toast-error::after {
-  background: var(--danger);
-}
-
-.toast-warning {
-  border-left-color: #ffb000;
-}
-
-.toast-warning::after {
-  background: #ffb000;
-}
-
-.toast-success {
-  border-left-color: var(--success);
-}
-
-.toast-success::after {
-  background: var(--success);
 }
 
 @keyframes toast-slide-in {
@@ -1144,7 +1136,7 @@ code {
 
 .toast-message {
   margin-top: 3px;
-  color: var(--muted);
+  color: color-mix(in srgb, var(--toast-color), transparent 18%);
   font-size: 0.82rem;
 }
 
@@ -1153,17 +1145,17 @@ code {
   width: 28px;
   height: 28px;
   place-items: center;
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--toast-border), var(--toast-color) 28%);
   border-radius: 8px;
-  background: #2e2e2e;
-  color: var(--muted);
+  background: color-mix(in srgb, var(--toast-border), transparent 78%);
+  color: var(--toast-color);
   cursor: pointer;
   font-size: 1rem;
   line-height: 1;
 }
 
 .toast-close:hover {
-  color: var(--text);
+  background: color-mix(in srgb, var(--toast-border), transparent 62%);
 }
 
 .dialog-backdrop {

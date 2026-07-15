@@ -102,10 +102,12 @@ Keep the dry-run package artifacts for inspection when needed:
 Use this checklist before any future real package publish:
 
 - Review package versions and release notes for `ShortenLink.Core`, `ShortenLink.Infrastructure`, and `ShortenLink.AspNetCore`.
+- Complete the maintainer preflight in `docs\nuget-publish-preflight.md`, including package ID ownership, account or organization ownership, API key scope, version availability, and release approval.
 - Run `dotnet build ShortenLink.slnx --verbosity minimal`.
 - Run `dotnet test ShortenLink.slnx --verbosity minimal`.
 - Run `dotnet pack ShortenLink.slnx -c Release --verbosity minimal`.
 - Run `.\scripts\release-dry-run.ps1` and confirm it reports `Published: false`.
+- Run `.\scripts\rehearse-local-feed.ps1 -PackageVersion <version> -ResetFeed` to prove the publish path against a local folder feed.
 - Run `.\scripts\smoke-consumer-package.ps1` to validate a clean ASP.NET Core consumer installation.
 - If publishing later, use a separate explicit publish command or workflow with a real NuGet API key, manual approval, and the package artifacts inspected by the dry-run.
 
@@ -117,6 +119,7 @@ Publishing is a maintainer-only operation. The default release commands stay dry
 
 Before any publish attempt:
 
+- Complete `docs\nuget-publish-preflight.md` and stop if package ID ownership, credentials, version choice, or maintainer approval is missing.
 - Review the package version and confirm it has not already been pushed to NuGet.
 - Review release notes and public package metadata.
 - Run `dotnet build ShortenLink.slnx --verbosity minimal`.

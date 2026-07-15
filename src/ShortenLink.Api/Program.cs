@@ -26,7 +26,9 @@ if (app.Environment.IsDevelopment())
         for (var index = 1; index <= requestedCount; index++)
         {
             var result = await shortLinkService.CreateAsync(
-                new CreateShortLinkRequest(Program.CreateMockUrl(index)),
+                new CreateShortLinkRequest(
+                    Program.CreateMockUrl(index),
+                    DateTimeOffset.UtcNow.AddDays(30)),
                 cancellationToken).ConfigureAwait(false);
 
             if (result.Succeeded && result.ShortLink is not null)

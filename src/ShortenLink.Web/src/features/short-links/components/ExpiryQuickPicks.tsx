@@ -23,13 +23,6 @@ export function ExpiryQuickPicks({ onChange }: ExpiryQuickPicksProps) {
           {option.label}
         </button>
       ))}
-      <button
-        type="button"
-        className="expiry-quick-button expiry-quick-button-muted"
-        onClick={() => onChange("")}
-      >
-        No expiry
-      </button>
     </div>
   );
 }

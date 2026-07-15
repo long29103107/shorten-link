@@ -48,6 +48,11 @@ type ConfirmAction = {
   onConfirm: () => void;
 };
 
+type EditorFieldErrors = {
+  originalUrl?: string;
+  expiredAtLocal?: string;
+};
+
 export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
   const [links, setLinks] = useState<ShortLinkAdminItem[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -61,6 +66,7 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
   const [editingCode, setEditingCode] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ originalUrl: "", expiredAtLocal: "" });
   const [initialEditForm, setInitialEditForm] = useState({ originalUrl: "", expiredAtLocal: "" });
+  const [fieldErrors, setFieldErrors] = useState<EditorFieldErrors>({});
   const [tooltip, setTooltip] = useState<{ text: string; x: number; y: number } | null>(null);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [selectedCodes, setSelectedCodes] = useState<Set<string>>(() => new Set());
@@ -230,6 +236,7 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
     setEditingCode(link.code);
     setOpenMenuCode(null);
     setErrorMessage(null);
+    setFieldErrors({});
     const nextForm = {
       originalUrl: link.originalUrl,
       expiredAtLocal: toDateTimeLocalValue(link.expiredAtUtc)
@@ -244,6 +251,7 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
     setEditingCode(null);
     setOpenMenuCode(null);
     setErrorMessage(null);
+    setFieldErrors({});
     setEditForm(nextForm);
     setInitialEditForm(nextForm);
   };
@@ -251,20 +259,74 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
   const closeEditor = () => {
     setIsCreating(false);
     setEditingCode(null);
+    setFieldErrors({});
     setInitialEditForm({ originalUrl: "", expiredAtLocal: "" });
   };
 
+  const validateEditorForm = () => {
+    const nextErrors: EditorFieldErrors = {};
+
+    if (!editForm.originalUrl.trim()) {
+      nextErrors.originalUrl = "Paste a full destination URL to shorten.";
+    } else {
+      try {
+        const url = new URL(editForm.originalUrl);
+        if (url.protocol !== "http:" && url.protocol !== "https:") {
+          nextErrors.originalUrl = "Use an http:// or https:// link.";
+        }
+      } catch {
+        nextErrors.originalUrl = "The destination URL does not look valid yet.";
+      }
+    }
+
+    if (!editForm.expiredAtLocal) {
+      nextErrors.expiredAtLocal = "Choose an expiry time.";
+    } else {
+      const expiry = new Date(editForm.expiredAtLocal);
+      if (Number.isNaN(expiry.getTime()) || expiry.getTime() <= Date.now()) {
+        nextErrors.expiredAtLocal = "Choose an expiry time in the future.";
+      }
+    }
+
+    return nextErrors;
+  };
+
+  const applyApiFieldError = (error: ApiError) => {
+    if (error.errorCode === "invalid_url") {
+      setFieldErrors({
+        originalUrl: toFriendlyErrorMessage(error.errorCode, error.message)
+      });
+      return true;
+    }
+
+    if (error.errorCode === "invalid_expiration") {
+      setFieldErrors({
+        expiredAtLocal: toFriendlyErrorMessage(error.errorCode, error.message)
+      });
+      return true;
+    }
+
+    return false;
+  };
+
   const handleCreate = async () => {
+    const nextErrors = validateEditorForm();
+    if (nextErrors.originalUrl || nextErrors.expiredAtLocal) {
+      setFieldErrors(nextErrors);
+      return;
+    }
+    setFieldErrors({});
+
+    const payload = {
+      originalUrl: editForm.originalUrl.trim(),
+      expiredAtUtc: new Date(editForm.expiredAtLocal).toISOString()
+    };
+
     setBusyCode("__create__");
     setErrorMessage(null);
 
     try {
-      const created = await createShortLink({
-        originalUrl: editForm.originalUrl.trim(),
-        expiredAtUtc: editForm.expiredAtLocal
-          ? new Date(editForm.expiredAtLocal).toISOString()
-          : undefined
-      });
+      const created = await createShortLink(payload);
       closeEditor();
       await loadLinks(1);
       showToast({
@@ -273,27 +335,44 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
         variant: "success"
       });
     } catch (error) {
-      if (error instanceof ApiError) {
-        setErrorMessage(toFriendlyErrorMessage(error.errorCode, error.message));
-      } else {
-        setErrorMessage("The link could not be created.");
+      if (error instanceof ApiError && applyApiFieldError(error)) {
+        return;
       }
+
+      const message =
+        error instanceof ApiError
+          ? toFriendlyErrorMessage(error.errorCode, error.message)
+          : "The link could not be created.";
+
+      closeEditor();
+      showToast({
+        title: "Create failed",
+        message,
+        variant: "error"
+      });
     } finally {
       setBusyCode(null);
     }
   };
 
   const handleSaveEdit = async (code: string) => {
+    const nextErrors = validateEditorForm();
+    if (nextErrors.originalUrl || nextErrors.expiredAtLocal) {
+      setFieldErrors(nextErrors);
+      return;
+    }
+    setFieldErrors({});
+
+    const payload = {
+      originalUrl: editForm.originalUrl.trim(),
+      expiredAtUtc: new Date(editForm.expiredAtLocal).toISOString()
+    };
+
     setBusyCode(code);
     setErrorMessage(null);
 
     try {
-      const updated = await updateShortLink(code, {
-        originalUrl: editForm.originalUrl.trim(),
-        expiredAtUtc: editForm.expiredAtLocal
-          ? new Date(editForm.expiredAtLocal).toISOString()
-          : undefined
-      });
+      const updated = await updateShortLink(code, payload);
       setLinks((current) =>
         current.map((link) => (link.code === updated.code ? updated : link))
       );
@@ -304,11 +383,21 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
         variant: "success"
       });
     } catch (error) {
-      if (error instanceof ApiError) {
-        setErrorMessage(toFriendlyErrorMessage(error.errorCode, error.message));
-      } else {
-        setErrorMessage("The link could not be updated.");
+      if (error instanceof ApiError && applyApiFieldError(error)) {
+        return;
       }
+
+      const message =
+        error instanceof ApiError
+          ? toFriendlyErrorMessage(error.errorCode, error.message)
+          : "The link could not be updated.";
+
+      closeEditor();
+      showToast({
+        title: "Update failed",
+        message,
+        variant: "error"
+      });
     } finally {
       setBusyCode(null);
     }
@@ -795,37 +884,71 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
               </h2>
             </div>
             <Label className="field">
-              <span className="field-label">Destination URL</span>
+              <span className="field-label">
+                Destination URL <span className="required-marker">*</span>
+              </span>
               <Input
                 type="url"
+                required
+                aria-invalid={fieldErrors.originalUrl ? "true" : undefined}
+                aria-describedby={fieldErrors.originalUrl ? "editor-original-url-error" : undefined}
                 value={editForm.originalUrl}
-                onChange={(event) =>
+                onChange={(event) => {
+                  const { value } = event.target;
                   setEditForm((current) => ({
                     ...current,
-                    originalUrl: event.target.value
-                  }))
-                }
+                    originalUrl: value
+                  }));
+                  setFieldErrors((current) => ({
+                    ...current,
+                    originalUrl: undefined
+                  }));
+                }}
               />
+              {fieldErrors.originalUrl ? (
+                <span id="editor-original-url-error" className="field-error">
+                  {fieldErrors.originalUrl}
+                </span>
+              ) : null}
             </Label>
             <Label className="field">
-              <span className="field-label">Expiry</span>
+              <span className="field-label">
+                Expiry <span className="required-marker">*</span>
+              </span>
               <Input
                 type="datetime-local"
+                required
+                aria-invalid={fieldErrors.expiredAtLocal ? "true" : undefined}
+                aria-describedby={fieldErrors.expiredAtLocal ? "editor-expiry-error" : undefined}
                 value={editForm.expiredAtLocal}
-                onChange={(event) =>
+                onChange={(event) => {
+                  const { value } = event.target;
                   setEditForm((current) => ({
                     ...current,
-                    expiredAtLocal: event.target.value
-                  }))
-                }
+                    expiredAtLocal: value
+                  }));
+                  setFieldErrors((current) => ({
+                    ...current,
+                    expiredAtLocal: undefined
+                  }));
+                }}
               />
+              {fieldErrors.expiredAtLocal ? (
+                <span id="editor-expiry-error" className="field-error">
+                  {fieldErrors.expiredAtLocal}
+                </span>
+              ) : null}
               <ExpiryQuickPicks
-                onChange={(expiredAtLocal) =>
+                onChange={(expiredAtLocal) => {
                   setEditForm((current) => ({
                     ...current,
                     expiredAtLocal
-                  }))
-                }
+                  }));
+                  setFieldErrors((current) => ({
+                    ...current,
+                    expiredAtLocal: undefined
+                  }));
+                }}
               />
             </Label>
             <div className="dialog-actions">

@@ -1,12 +1,12 @@
 ---
 phase: 009
 title: Live Publishing Preflight
-status: active
+status: done
 created_at: 2026-07-15
 updated_at: 2026-07-15
-current_task: 009_001
+current_task:
 task_count: 1
-done_count: 0
+done_count: 1
 depends_on:
   - 008
 ---
@@ -50,19 +50,19 @@ Out:
 
 | Task | Title | Status | Done At |
 |---|---|---|---|
-| 009_001 | NuGet.org publish preflight checklist | planned | |
+| 009_001 | NuGet.org publish preflight checklist | done | 2026-07-15 |
 
 ## Current Task
 
-`009_001 - NuGet.org publish preflight checklist`
+None. Phase 009 is complete unless an external maintainer confirms the live publish prerequisites and explicitly asks for a publish task.
 
 ## Completed Notes
 
-- None yet.
+- `009_001` added `docs\nuget-publish-preflight.md`, linked it from README, and updated release-readiness closure evidence. Maintainers now have explicit local gates, external NuGet.org prerequisites, credential handling rules, package ID/version review, and go/no-go outcomes before any `scripts\publish-nuget.ps1 -Publish` attempt.
 
 ## Next Task Proposal
 
-After `009_001`, decide whether the external NuGet.org ownership and credential prerequisites are satisfied. If they are not, stop Phase 009 as blocked by external maintainer action rather than adding a publish task.
+Phase 009 has met its repository-side goal. The next implementation phase can move to Phase 010 HTTP Status Experience, starting with `010_001 - HTTP 401 403 404 status pages MVP`, unless a maintainer first confirms all external NuGet.org prerequisites and explicitly requests a live publish task.
 
 ## Scan Rule
 

@@ -38,6 +38,7 @@ outside source control, and explicit publish intent.
 | Package metadata and README inclusion | `scripts\release-dry-run.ps1` inspects package IDs, versions, authors, README inclusion, license expression, repository metadata, tags, dependency shape, assemblies, and absence of demo API/Web coupling. |
 | Clean consumer install | `scripts\smoke-consumer-package.ps1` creates a clean ASP.NET Core app, installs `ShortenLink.AspNetCore`, maps package endpoints, and verifies create/detail/redirect/deactivate/post-delete redirect behavior. |
 | Manual publish guardrails | `scripts\publish-nuget.ps1` previews by default, requires `-Publish`, requires `NUGET_API_KEY` or `-NuGetApiKey`, masks the key in displayed command arguments, and reruns release dry-run before `dotnet nuget push`. |
+| Live publish preflight | `docs\nuget-publish-preflight.md` separates repository-verifiable gates from external NuGet.org account, package ID ownership, API key scope, version availability, and maintainer approval checks. |
 | Local feed rehearsal | `scripts\rehearse-local-feed.ps1` validates packages, copies the three reusable packages to `.tmp\local-nuget-feed`, handles duplicate versions with `-ResetFeed` or `-SkipDuplicate`, and smokes a clean consumer from the existing feed. |
 | CI validation | `.github\workflows\ci.yml` runs restore, build, test, and pack on push and pull request without Docker, Redis, PostgreSQL, secrets, publishing, or deployment. |
 
@@ -87,5 +88,5 @@ The current product definition does not require these items:
   dashboards.
 
 If live publishing becomes desired later, open a separate phase only after
-registry ownership, package ID ownership, API key handling, and maintainer
-approval rules are available.
+the `docs\nuget-publish-preflight.md` checklist confirms registry ownership,
+package ID ownership, API key handling, version choice, and maintainer approval.

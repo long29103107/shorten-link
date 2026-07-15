@@ -55,7 +55,14 @@ public sealed class ShortLinkService : IShortLinkService
         }
 
         var now = timeProvider.GetUtcNow();
-        if (request.ExpiresAt is not null && request.ExpiresAt <= now)
+        if (request.ExpiresAt is null)
+        {
+            return CreateShortLinkResult.Failure(
+                ShortLinkErrorCodes.InvalidExpiration,
+                "Expiration is required.");
+        }
+
+        if (request.ExpiresAt <= now)
         {
             return CreateShortLinkResult.Failure(
                 ShortLinkErrorCodes.InvalidExpiration,
@@ -70,7 +77,7 @@ public sealed class ShortLinkService : IShortLinkService
                 "A unique short code could not be generated.");
         }
 
-        var shortLink = new ShortLink(code, originalUrl, now, request.ExpiresAt);
+        var shortLink = new ShortLink(code, originalUrl, now, request.ExpiresAt.Value);
         await repository.AddAsync(shortLink, cancellationToken).ConfigureAwait(false);
 
         return CreateShortLinkResult.Success(shortLink);
@@ -198,7 +205,14 @@ public sealed class ShortLinkService : IShortLinkService
         }
 
         var now = timeProvider.GetUtcNow();
-        if (request.ExpiresAt is not null && request.ExpiresAt <= now)
+        if (request.ExpiresAt is null)
+        {
+            return ShortLinkDetailsResult.Failure(
+                ShortLinkErrorCodes.InvalidExpiration,
+                "Expiration is required.");
+        }
+
+        if (request.ExpiresAt <= now)
         {
             return ShortLinkDetailsResult.Failure(
                 ShortLinkErrorCodes.InvalidExpiration,
@@ -215,7 +229,7 @@ public sealed class ShortLinkService : IShortLinkService
             existing.Code,
             originalUrl,
             existing.CreatedAt,
-            request.ExpiresAt,
+            request.ExpiresAt.Value,
             existing.IsActive);
 
         await repository.UpdateAsync(updated, cancellationToken).ConfigureAwait(false);

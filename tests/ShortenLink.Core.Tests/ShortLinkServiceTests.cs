@@ -22,15 +22,31 @@ public sealed class ShortLinkServiceTests
     [Fact]
     public async Task CreateAsync_GeneratesUniqueDefaultCode()
     {
+        var now = new DateTimeOffset(2026, 7, 15, 12, 0, 0, TimeSpan.Zero);
         var repository = new InMemoryShortLinkRepository();
-        await repository.AddAsync(new ShortLink("taken01", new Uri("https://example.com"), DateTimeOffset.UtcNow));
-        var service = CreateService(repository, new SequenceCodeGenerator("taken01", "fresh01"));
+        await repository.AddAsync(new ShortLink("taken01", new Uri("https://example.com"), now));
+        var service = CreateService(
+            repository,
+            new SequenceCodeGenerator("taken01", "fresh01"),
+            timeProvider: new FixedTimeProvider(now));
 
-        var result = await service.CreateAsync(new CreateShortLinkRequest("https://openai.com"));
+        var result = await service.CreateAsync(
+            new CreateShortLinkRequest("https://openai.com", now.AddDays(1)));
 
         Assert.True(result.Succeeded);
         Assert.NotNull(result.ShortLink);
         Assert.Equal("fresh01", result.ShortLink.Code);
+    }
+
+    [Fact]
+    public async Task CreateAsync_RejectsMissingExpiration()
+    {
+        var service = CreateService();
+
+        var result = await service.CreateAsync(new CreateShortLinkRequest("https://openai.com"));
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(ShortLinkErrorCodes.InvalidExpiration, result.ErrorCode);
     }
 
     [Fact]
@@ -65,20 +81,36 @@ public sealed class ShortLinkServiceTests
     [Fact]
     public async Task UpdateAsync_ChangesDestinationAndClearsCache()
     {
+        var now = new DateTimeOffset(2026, 7, 15, 12, 0, 0, TimeSpan.Zero);
         var repository = new InMemoryShortLinkRepository();
         var cache = new InMemoryShortLinkCache();
-        var shortLink = new ShortLink("edit001", new Uri("https://example.com/old"), DateTimeOffset.UtcNow);
+        var shortLink = new ShortLink("edit001", new Uri("https://example.com/old"), now, now.AddDays(1));
         await repository.AddAsync(shortLink);
         await cache.SetAsync(shortLink);
-        var service = CreateService(repository, cache: cache);
+        var service = CreateService(repository, cache: cache, timeProvider: new FixedTimeProvider(now));
+
+        var result = await service.UpdateAsync(
+            "edit001",
+            new UpdateShortLinkRequest("https://example.com/new", now.AddDays(2)));
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("https://example.com/new", result.ShortLink?.OriginalUrl.AbsoluteUri.TrimEnd('/'));
+        Assert.Null(await cache.FindByCodeAsync("edit001"));
+    }
+
+    [Fact]
+    public async Task UpdateAsync_RejectsMissingExpiration()
+    {
+        var repository = new InMemoryShortLinkRepository();
+        await repository.AddAsync(new ShortLink("edit001", new Uri("https://example.com/old"), DateTimeOffset.UtcNow));
+        var service = CreateService(repository);
 
         var result = await service.UpdateAsync(
             "edit001",
             new UpdateShortLinkRequest("https://example.com/new"));
 
-        Assert.True(result.Succeeded);
-        Assert.Equal("https://example.com/new", result.ShortLink?.OriginalUrl.AbsoluteUri.TrimEnd('/'));
-        Assert.Null(await cache.FindByCodeAsync("edit001"));
+        Assert.False(result.Succeeded);
+        Assert.Equal(ShortLinkErrorCodes.InvalidExpiration, result.ErrorCode);
     }
 
     [Fact]

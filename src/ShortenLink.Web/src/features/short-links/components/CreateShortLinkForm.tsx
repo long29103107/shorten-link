@@ -40,11 +40,13 @@ export function CreateShortLinkForm({
       return "The destination URL does not look valid yet.";
     }
 
-    if (form.expiredAtLocal) {
-      const expiry = new Date(form.expiredAtLocal);
-      if (Number.isNaN(expiry.getTime()) || expiry.getTime() <= Date.now()) {
-        return "Choose an expiry time in the future.";
-      }
+    if (!form.expiredAtLocal) {
+      return "Choose an expiry time.";
+    }
+
+    const expiry = new Date(form.expiredAtLocal);
+    if (Number.isNaN(expiry.getTime()) || expiry.getTime() <= Date.now()) {
+      return "Choose an expiry time in the future.";
     }
 
     return null;
@@ -64,9 +66,7 @@ export function CreateShortLinkForm({
     try {
       const createdLink = await createShortLink({
         originalUrl: form.originalUrl.trim(),
-        expiredAtUtc: form.expiredAtLocal
-          ? new Date(form.expiredAtLocal).toISOString()
-          : undefined
+        expiredAtUtc: new Date(form.expiredAtLocal).toISOString()
       });
 
       onCreated(createdLink);
@@ -96,9 +96,12 @@ export function CreateShortLinkForm({
 
       <CardContent>
       <Label className="field">
-        <span className="field-label">Destination URL</span>
+        <span className="field-label">
+          Destination URL <span className="required-marker">*</span>
+        </span>
         <Input
           type="url"
+          required
           placeholder="https://example.com/really/long/path"
           value={form.originalUrl}
           onChange={(event) =>
@@ -109,9 +112,12 @@ export function CreateShortLinkForm({
 
       <div className="field-grid">
         <Label className="field">
-          <span className="field-label">Expiry</span>
+          <span className="field-label">
+            Expiry <span className="required-marker">*</span>
+          </span>
           <Input
             type="datetime-local"
+            required
             value={form.expiredAtLocal}
             onChange={(event) =>
               setForm((current) => ({ ...current, expiredAtLocal: event.target.value }))

@@ -54,11 +54,13 @@ public sealed class ShortLinkEndpointsTests
 
         using var firstResponse = await client.PostAsJsonAsync("/api/short-links", new
         {
-            originalUrl = "https://example.com/one"
+            originalUrl = "https://example.com/one",
+            expiredAtUtc = new DateTimeOffset(2026, 7, 20, 0, 0, 0, TimeSpan.Zero)
         });
         using var secondResponse = await client.PostAsJsonAsync("/api/short-links", new
         {
-            originalUrl = "https://example.com/two"
+            originalUrl = "https://example.com/two",
+            expiredAtUtc = new DateTimeOffset(2026, 7, 20, 1, 0, 0, TimeSpan.Zero)
         });
 
         var firstPayload = await firstResponse.Content.ReadFromJsonAsync<ShortLinkCreatedResponse>();
@@ -181,7 +183,8 @@ public sealed class ShortLinkEndpointsTests
 
         using var response = await client.PostAsJsonAsync("/api/short-links", new
         {
-            originalUrl = "ftp://example.com/file"
+            originalUrl = "ftp://example.com/file",
+            expiredAtUtc = new DateTimeOffset(2026, 7, 20, 0, 0, 0, TimeSpan.Zero)
         });
 
         var payload = await response.Content.ReadFromJsonAsync<ShortLinkErrorResponse>();
@@ -189,6 +192,42 @@ public sealed class ShortLinkEndpointsTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.NotNull(payload);
         Assert.Equal("invalid_url", payload.ErrorCode);
+    }
+
+    [Fact]
+    public async Task PostCreate_ReturnsBadRequestWhenDestinationUrlIsMissing()
+    {
+        await using var factory = new ShortLinkApiFactory(enableFrontendFallback: false);
+        using var client = factory.CreateClient();
+
+        using var response = await client.PostAsJsonAsync("/api/short-links", new
+        {
+            expiredAtUtc = new DateTimeOffset(2026, 7, 20, 0, 0, 0, TimeSpan.Zero)
+        });
+
+        var payload = await response.Content.ReadFromJsonAsync<ShortLinkErrorResponse>();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.NotNull(payload);
+        Assert.Equal("invalid_url", payload.ErrorCode);
+    }
+
+    [Fact]
+    public async Task PostCreate_ReturnsBadRequestWhenExpiryIsMissing()
+    {
+        await using var factory = new ShortLinkApiFactory(enableFrontendFallback: false);
+        using var client = factory.CreateClient();
+
+        using var response = await client.PostAsJsonAsync("/api/short-links", new
+        {
+            originalUrl = "https://example.com/docs"
+        });
+
+        var payload = await response.Content.ReadFromJsonAsync<ShortLinkErrorResponse>();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.NotNull(payload);
+        Assert.Equal("invalid_expiration", payload.ErrorCode);
     }
 
     [Fact]
@@ -243,13 +282,52 @@ public sealed class ShortLinkEndpointsTests
 
         using var updateResponse = await client.PutAsJsonAsync($"/api/short-links/{created.Code}", new
         {
-            originalUrl = "https://example.com/new"
+            originalUrl = "https://example.com/new",
+            expiredAtUtc = new DateTimeOffset(2026, 7, 21, 0, 0, 0, TimeSpan.Zero)
         });
         using var redirectResponse = await client.GetAsync($"/{created.Code}");
 
         Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
         Assert.Equal(HttpStatusCode.Redirect, redirectResponse.StatusCode);
         Assert.Equal("https://example.com/new", redirectResponse.Headers.Location?.AbsoluteUri);
+    }
+
+    [Fact]
+    public async Task PutUpdate_ReturnsBadRequestWhenDestinationUrlIsMissing()
+    {
+        await using var factory = new ShortLinkApiFactory(enableFrontendFallback: false);
+        using var client = factory.CreateClient();
+        var created = await CreateShortLinkAsync(client, "https://example.com/old");
+
+        using var response = await client.PutAsJsonAsync($"/api/short-links/{created.Code}", new
+        {
+            expiredAtUtc = new DateTimeOffset(2026, 7, 21, 0, 0, 0, TimeSpan.Zero)
+        });
+
+        var payload = await response.Content.ReadFromJsonAsync<ShortLinkErrorResponse>();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.NotNull(payload);
+        Assert.Equal("invalid_url", payload.ErrorCode);
+    }
+
+    [Fact]
+    public async Task PutUpdate_ReturnsBadRequestWhenExpiryIsMissing()
+    {
+        await using var factory = new ShortLinkApiFactory(enableFrontendFallback: false);
+        using var client = factory.CreateClient();
+        var created = await CreateShortLinkAsync(client, "https://example.com/old");
+
+        using var response = await client.PutAsJsonAsync($"/api/short-links/{created.Code}", new
+        {
+            originalUrl = "https://example.com/new"
+        });
+
+        var payload = await response.Content.ReadFromJsonAsync<ShortLinkErrorResponse>();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.NotNull(payload);
+        Assert.Equal("invalid_expiration", payload.ErrorCode);
     }
 
     [Fact]
@@ -375,11 +453,13 @@ public sealed class ShortLinkEndpointsTests
 
         using var firstResponse = await client.PostAsJsonAsync("/api/short-links", new
         {
-            originalUrl = "https://example.com/one"
+            originalUrl = "https://example.com/one",
+            expiredAtUtc = new DateTimeOffset(2026, 7, 20, 0, 0, 0, TimeSpan.Zero)
         });
         using var secondResponse = await client.PostAsJsonAsync("/api/short-links", new
         {
-            originalUrl = "https://example.com/two"
+            originalUrl = "https://example.com/two",
+            expiredAtUtc = new DateTimeOffset(2026, 7, 20, 1, 0, 0, TimeSpan.Zero)
         });
 
         Assert.Equal(HttpStatusCode.Created, firstResponse.StatusCode);
@@ -401,11 +481,13 @@ public sealed class ShortLinkEndpointsTests
 
         using var firstResponse = await client.PostAsJsonAsync("/api/short-links", new
         {
-            originalUrl = "https://example.com/one"
+            originalUrl = "https://example.com/one",
+            expiredAtUtc = new DateTimeOffset(2026, 7, 20, 0, 0, 0, TimeSpan.Zero)
         });
         using var secondResponse = await client.PostAsJsonAsync("/api/short-links", new
         {
-            originalUrl = "https://example.com/two"
+            originalUrl = "https://example.com/two",
+            expiredAtUtc = new DateTimeOffset(2026, 7, 20, 1, 0, 0, TimeSpan.Zero)
         });
 
         Assert.Equal(HttpStatusCode.Created, firstResponse.StatusCode);
@@ -785,6 +867,8 @@ public sealed class ShortLinkEndpointsTests
         string originalUrl,
         DateTimeOffset? expiredAtUtc = null)
     {
+        expiredAtUtc ??= new DateTimeOffset(2026, 7, 20, 0, 0, 0, TimeSpan.Zero);
+
         using var response = await client.PostAsJsonAsync("/api/short-links", new
         {
             originalUrl,

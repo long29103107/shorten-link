@@ -11,12 +11,12 @@ export type ShortLinkFormInput = {
 
 export type CreateShortLinkRequest = {
   originalUrl: string;
-  expiredAtUtc?: string;
+  expiredAtUtc: string;
 };
 
 export type UpdateShortLinkRequest = {
   originalUrl: string;
-  expiredAtUtc?: string;
+  expiredAtUtc: string;
 };
 
 export type CreatedShortLink = {
