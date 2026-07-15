@@ -111,6 +111,65 @@ Use this checklist before any future real package publish:
 
 NuGet publishing is intentionally out of scope for the default verification path. No script in this repository should publish packages unless a later task adds a credential-protected publish workflow deliberately.
 
+### Manual NuGet Publish Workflow
+
+Publishing is a maintainer-only operation. The default release commands stay dry-run-only, and `scripts\publish-nuget.ps1` only calls `dotnet nuget push` when a maintainer supplies both explicit intent and credentials.
+
+Before any publish attempt:
+
+- Review the package version and confirm it has not already been pushed to NuGet.
+- Review release notes and public package metadata.
+- Run `dotnet build ShortenLink.slnx --verbosity minimal`.
+- Run `dotnet test ShortenLink.slnx --verbosity minimal`.
+- Run `dotnet pack ShortenLink.slnx -c Release --verbosity minimal`.
+- Run `.\scripts\release-dry-run.ps1 -PackageVersion <version>` and confirm it reports `Published: false`.
+- Run `.\scripts\smoke-consumer-package.ps1 -PackageVersion <version>`.
+
+Preview the publish command without pushing packages:
+
+```powershell
+.\scripts\publish-nuget.ps1 -PackageVersion 1.0.0
+```
+
+To publish intentionally, provide the API key from the environment or another secret store and pass `-Publish`:
+
+```powershell
+$env:NUGET_API_KEY = "<set outside source control>"
+.\scripts\publish-nuget.ps1 -PackageVersion 1.0.0 -Publish
+```
+
+Use `-SkipDuplicate` only when retrying a partially completed publish and after confirming the already-published package version is expected:
+
+```powershell
+.\scripts\publish-nuget.ps1 -PackageVersion 1.0.0 -Publish -SkipDuplicate
+```
+
+The publish script fails closed when `-Publish` is missing or no NuGet API key is available. When publishing is enabled, it reruns the release dry-run into `.tmp\nuget-publish` before pushing `ShortenLink.Core`, `ShortenLink.Infrastructure`, and `ShortenLink.AspNetCore`.
+
+After publishing, verify the packages on NuGet, install `ShortenLink.AspNetCore` into a clean consumer app, and run the create, detail, redirect, and deactivate smoke flow again. If a bad package is published, prefer deprecating or unlisting the affected version and publishing a corrected version; do not overwrite the same NuGet version.
+
+### Local Feed Publish Rehearsal
+
+Before using real NuGet credentials, rehearse the publish path against a local folder feed:
+
+```powershell
+.\scripts\rehearse-local-feed.ps1 -PackageVersion 1.0.0 -ResetFeed
+```
+
+The rehearsal validates packages with `release-dry-run.ps1`, copies `ShortenLink.Core`, `ShortenLink.Infrastructure`, and `ShortenLink.AspNetCore` into `.tmp\local-nuget-feed`, then runs the clean consumer smoke against that existing feed. It does not call `dotnet nuget push`, does not require credentials, and never publishes to NuGet.org.
+
+If the feed already contains the same package version, the script fails closed. Start a clean rehearsal feed with `-ResetFeed`, or intentionally retry against existing packages with `-SkipDuplicate`:
+
+```powershell
+.\scripts\rehearse-local-feed.ps1 -PackageVersion 1.0.0 -SkipDuplicate
+```
+
+Keep rehearsal artifacts for inspection when needed:
+
+```powershell
+.\scripts\rehearse-local-feed.ps1 -PackageVersion 1.0.0 -ResetFeed -KeepArtifacts
+```
+
 ## Use From Another .NET App
 
 Most ASP.NET Core consumers should start with `ShortenLink.AspNetCore`. That package is the host-facing entry point for dependency injection and endpoint mapping. It brings the lower-level reusable projects with it through package/project references.
@@ -124,6 +183,12 @@ To validate the package from a clean consumer app shape, run:
 ```
 
 The smoke script packs the reusable packages into a temporary local NuGet source, creates a clean ASP.NET Core app under `.tmp`, installs `ShortenLink.AspNetCore`, maps the library endpoints, runs SQLite default mode, and verifies create, detail, redirect, and deactivate behavior. It does not reference `ShortenLink.Api`, and it does not require PostgreSQL, Redis, Docker, frontend assets, credentials, or package publishing.
+
+To smoke an existing local package source without regenerating it:
+
+```powershell
+.\scripts\smoke-consumer-package.ps1 -PackageSource .\.tmp\local-nuget-feed -UseExistingPackageSource
+```
 
 Keep the generated consumer app and local package source for inspection when needed:
 

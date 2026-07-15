@@ -4,6 +4,7 @@ param(
     [string]$ApiUrl = "http://127.0.0.1:5298",
     [string]$PackageSource = "",
     [string]$ConsumerRoot = "",
+    [switch]$UseExistingPackageSource,
     [switch]$KeepArtifacts
 )
 
@@ -121,7 +122,7 @@ $client = $null
 
 try {
     New-Item -ItemType Directory -Force -Path $tempRoot | Out-Null
-    if (Test-Path -LiteralPath $PackageSource) {
+    if ((Test-Path -LiteralPath $PackageSource) -and -not $UseExistingPackageSource) {
         Remove-Item -LiteralPath $PackageSource -Recurse -Force
     }
 
@@ -129,27 +130,34 @@ try {
         Remove-Item -LiteralPath $ConsumerRoot -Recurse -Force
     }
 
-    New-Item -ItemType Directory -Force -Path $PackageSource | Out-Null
+    if ($UseExistingPackageSource) {
+        if (-not (Test-Path -LiteralPath $PackageSource)) {
+            throw "Existing package source was not found: $PackageSource"
+        }
+    }
+    else {
+        New-Item -ItemType Directory -Force -Path $PackageSource | Out-Null
 
-    Invoke-Tool -FileName $dotnet -WorkingDirectory $repoRoot -Arguments @(
-        "restore",
-        "ShortenLink.slnx",
-        "--ignore-failed-sources",
-        "--verbosity",
-        "minimal"
-    ) | Out-Null
+        Invoke-Tool -FileName $dotnet -WorkingDirectory $repoRoot -Arguments @(
+            "restore",
+            "ShortenLink.slnx",
+            "--ignore-failed-sources",
+            "--verbosity",
+            "minimal"
+        ) | Out-Null
 
-    Invoke-Tool -FileName $dotnet -WorkingDirectory $repoRoot -Arguments @(
-        "pack",
-        "ShortenLink.slnx",
-        "-c",
-        "Release",
-        "-o",
-        $PackageSource,
-        "--no-restore",
-        "--verbosity",
-        "minimal"
-    ) | Out-Null
+        Invoke-Tool -FileName $dotnet -WorkingDirectory $repoRoot -Arguments @(
+            "pack",
+            "ShortenLink.slnx",
+            "-c",
+            "Release",
+            "-o",
+            $PackageSource,
+            "--no-restore",
+            "--verbosity",
+            "minimal"
+        ) | Out-Null
+    }
 
     foreach ($packageId in @("ShortenLink.Core", "ShortenLink.Infrastructure", "ShortenLink.AspNetCore")) {
         $packagePath = Join-Path $PackageSource "$packageId.$PackageVersion.nupkg"
@@ -324,6 +332,7 @@ app.Run();
         Status = "Completed"
         ConsumerRoot = $ConsumerRoot
         PackageSource = $PackageSource
+        PackageSourceMode = if ($UseExistingPackageSource) { "Existing" } else { "Generated" }
         ApiUrl = $ApiUrl
         Package = "ShortenLink.AspNetCore"
         PackageVersion = $PackageVersion
@@ -354,7 +363,7 @@ finally {
             Remove-Item -LiteralPath $ConsumerRoot -Recurse -Force
         }
 
-        if (Test-Path -LiteralPath $PackageSource) {
+        if ((Test-Path -LiteralPath $PackageSource) -and -not $UseExistingPackageSource) {
             Remove-Item -LiteralPath $PackageSource -Recurse -Force
         }
     }
