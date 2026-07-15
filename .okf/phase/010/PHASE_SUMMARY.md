@@ -1,12 +1,12 @@
 ---
 phase: 010
 title: HTTP Status Experience
-status: planned
+status: done
 created_at: 2026-07-15
 updated_at: 2026-07-15
-current_task: 010_001
+current_task:
 task_count: 1
-done_count: 0
+done_count: 1
 depends_on:
   - 008
 ---
@@ -47,19 +47,19 @@ Out:
 
 | Task | Title | Status | Done At |
 |---|---|---|---|
-| 010_001 | HTTP 401 403 404 status pages MVP | planned | |
+| 010_001 | HTTP 401 403 404 status pages MVP | done | 2026-07-15T20:18:59+07:00 |
 
 ## Current Task
 
-`010_001 - HTTP 401 403 404 status pages MVP`
+No active task.
 
 ## Completed Notes
 
-- None yet.
+- `010_001` added standalone reusable React status pages for unauthorized, forbidden, and not-found states, mapped `/not-found` and unknown frontend routes to the `404` status experience, documented the routes in README, and verified frontend build plus API status expectations.
 
 ## Next Task Proposal
 
-After `010_001`, decide whether any protected admin/auth flow is actually needed. Do not add authentication unless there is a concrete product requirement.
+Open Phase 011 for permission-based security and admin protection.
 
 ## Scan Rule
 

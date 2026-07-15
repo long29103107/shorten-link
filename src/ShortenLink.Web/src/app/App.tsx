@@ -1,7 +1,7 @@
 import { startTransition, useEffect, useState } from "react";
 import { CreateShortLinkPage } from "../features/short-links/pages/CreateShortLinkPage";
 import { ShortLinkAdminPage } from "../features/short-links/pages/ShortLinkAdminPage";
-import { NotFoundPage } from "../features/short-links/pages/NotFoundPage";
+import { StatusPage } from "../features/short-links/pages/StatusPage";
 import { ShortLinkDetailPage } from "../features/short-links/pages/ShortLinkDetailPage";
 import type { AppRoute, CreatedShortLink } from "../features/short-links/types";
 import { Button } from "../shared/components/ui/button";
@@ -70,8 +70,8 @@ export function App() {
       ? "Admin"
       : route.kind === "detail"
         ? "Link detail"
-        : route.kind === "not-found"
-          ? "Not found"
+        : route.kind === "status"
+          ? `${route.statusCode}`
           : "Endpoint";
 
   const pageDescription =
@@ -79,9 +79,30 @@ export function App() {
       ? "Manage generated random short links"
       : route.kind === "detail"
         ? "Inspect and retire one generated link"
-        : route.kind === "not-found"
+        : route.kind === "status"
           ? "Return to the short-link workspace"
           : "Random short-link creation";
+
+  if (route.kind === "status") {
+    return (
+      <div className="status-shell">
+        <StatusPage
+          statusCode={route.statusCode}
+          onBackHome={() => navigate("/")}
+        />
+        <ConfirmDialog
+          open={pendingNavigationPath !== null}
+          title="Discard form changes?"
+          description="You have unsaved changes in the admin form. Leave this page and discard them?"
+          confirmLabel="Discard changes"
+          variant="destructive"
+          onConfirm={confirmDiscardAndNavigate}
+          onCancel={() => setPendingNavigationPath(null)}
+        />
+        <Toaster />
+      </div>
+    );
+  }
 
   return (
     <div className="app-shell">
@@ -149,9 +170,6 @@ export function App() {
           />
         ) : null}
 
-        {route.kind === "not-found" ? (
-          <NotFoundPage onBackHome={() => navigate("/")} />
-        ) : null}
         </div>
       </main>
       <ConfirmDialog

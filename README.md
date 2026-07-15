@@ -460,6 +460,7 @@ In development, `src\ShortenLink.Api\appsettings.Development.json` overrides `Sh
 ## Frontend Demo
 
 The React + Vite demo app now provides the Phase 001 create, copy, detail, deactivate, and fallback flow.
+It also exposes explicit status experiences at `/unauthorized`, `/forbidden`, and `/not-found`; `/not-found` remains compatible with the configured unknown-code fallback and renders the `404` state.
 
 Start the API in one terminal:
 

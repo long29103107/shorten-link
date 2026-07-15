@@ -3,9 +3,9 @@ id: 010_001
 phase: 010
 task: 001
 title: HTTP 401 403 404 status pages MVP
-status: planned
+status: done
 created_at: 2026-07-15
-completed_at:
+completed_at: 2026-07-15T20:18:59+07:00
 owner: codex
 type: frontend-api
 priority: medium
@@ -40,7 +40,7 @@ In:
 - Add React routes or route states for `401`, `403`, and `404`.
 - Prefer a shared status-page component with status-specific title, message, and primary action.
 - Keep the existing unknown short-code fallback compatible with the new `404` page.
-- Ensure direct browser navigation to `/401`, `/403`, and `/404` renders the expected state.
+- Ensure direct browser navigation to `/unauthorized`, `/forbidden`, and `/not-found` renders the expected state.
 - Ensure unknown frontend routes land on the `404` experience instead of a blank or confusing state.
 - Add focused tests or verification for route parsing/rendering and any affected API status behavior.
 
@@ -76,9 +76,9 @@ Expected starting points:
 
 ## Acceptance Criteria
 
-- `/401` renders a clear unauthorized state telling the user access requires permission or sign-in, without implementing sign-in.
-- `/403` renders a clear forbidden state telling the user access is denied even though the route exists.
-- `/404` renders a clear not-found state and is reused for unknown frontend routes.
+- `/unauthorized` renders a clear unauthorized state telling the user access requires permission or sign-in, without implementing sign-in.
+- `/forbidden` renders a clear forbidden state telling the user access is denied even though the route exists.
+- `/not-found` renders a clear not-found state and is reused for unknown frontend routes.
 - Existing unknown short-link fallback behavior still lands on the configured frontend fallback path and produces the expected user-facing not-found state.
 - Status pages provide a safe action back to the create-link/home flow.
 - Frontend route parsing handles known status paths deterministically.
@@ -108,4 +108,12 @@ For task-only changes, read back `.okf\phase\010\PHASE_SUMMARY.md` and this task
 
 ## Done Notes
 
-- Not started.
+- Implemented reusable React `StatusPage` for `401`, `403`, and `404`.
+- Rendered status pages in a standalone full-page shell without the admin/create sidebar.
+- Added deterministic route parsing for `/unauthorized`, `/forbidden`, `/not-found`, and unknown frontend routes.
+- Preserved unknown-code fallback compatibility by keeping `/not-found` mapped to the `404` status state.
+- Added README documentation for status routes.
+- Verification:
+  - `npm run build` passed in `src/ShortenLink.Web`.
+  - `dotnet test tests\ShortenLink.Api.Tests\ShortenLink.Api.Tests.csproj --no-build --verbosity minimal` passed, confirming existing API status expectations from the current build.
+  - Full `dotnet test ShortenLink.slnx --verbosity minimal` was attempted but blocked by a running `ShortenLink.Api` process locking API output DLLs; Core and Infrastructure tests passed before the API project copy step failed.
