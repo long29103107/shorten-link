@@ -16,8 +16,52 @@ public sealed class EfCoreShortLinkRepository : IShortLinkRepository
 
     public async Task<IReadOnlyList<ShortLink>> ListRecentAsync(
         int limit,
+        DateTimeOffset? beforeCreatedAt = null,
+        string? beforeCode = null,
         CancellationToken cancellationToken = default)
     {
+        var safeLimit = Math.Clamp(limit, 1, 500);
+
+        var records = await dbContext.ShortLinks
+            .AsNoTracking()
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return records
+            .OrderByDescending(link => link.CreatedAt)
+            .ThenBy(link => link.Code, StringComparer.Ordinal)
+            .Where(link => IsAfterCursor(link, beforeCreatedAt, beforeCode))
+            .Take(safeLimit)
+            .Select(record => record.ToDomain())
+            .ToList();
+    }
+
+    private static bool IsAfterCursor(
+        ShortLinkRecord link,
+        DateTimeOffset? beforeCreatedAt,
+        string? beforeCode)
+    {
+        if (beforeCreatedAt is null)
+        {
+            return true;
+        }
+
+        if (link.CreatedAt < beforeCreatedAt)
+        {
+            return true;
+        }
+
+        return link.CreatedAt == beforeCreatedAt
+            && !string.IsNullOrWhiteSpace(beforeCode)
+            && string.Compare(link.Code, beforeCode, StringComparison.Ordinal) > 0;
+    }
+
+    public async Task<IReadOnlyList<ShortLink>> ListRecentPageAsync(
+        int skip,
+        int limit,
+        CancellationToken cancellationToken = default)
+    {
+        var safeSkip = Math.Max(skip, 0);
         var safeLimit = Math.Clamp(limit, 1, 500);
         var records = await dbContext.ShortLinks
             .AsNoTracking()
@@ -27,10 +71,14 @@ public sealed class EfCoreShortLinkRepository : IShortLinkRepository
         return records
             .OrderByDescending(link => link.CreatedAt)
             .ThenBy(link => link.Code, StringComparer.Ordinal)
+            .Skip(safeSkip)
             .Take(safeLimit)
             .Select(record => record.ToDomain())
             .ToList();
     }
+
+    public Task<int> CountAsync(CancellationToken cancellationToken = default) =>
+        dbContext.ShortLinks.CountAsync(cancellationToken);
 
     public async Task<ShortLink?> FindByCodeAsync(
         string code,

@@ -4,7 +4,16 @@ public interface IShortLinkService
 {
     Task<IReadOnlyList<Domain.ShortLink>> ListRecentAsync(
         int limit = 100,
+        DateTimeOffset? beforeCreatedAt = null,
+        string? beforeCode = null,
         CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<Domain.ShortLink>> ListRecentPageAsync(
+        int skip,
+        int limit = 100,
+        CancellationToken cancellationToken = default);
+
+    Task<int> CountAsync(CancellationToken cancellationToken = default);
 
     Task<CreateShortLinkResult> CreateAsync(
         CreateShortLinkRequest request,

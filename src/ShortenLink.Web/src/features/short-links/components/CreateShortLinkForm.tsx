@@ -7,6 +7,8 @@ import { Button } from "../../../shared/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "../../../shared/components/ui/card";
 import { Input } from "../../../shared/components/ui/input";
 import { Label } from "../../../shared/components/ui/label";
+import { showToast } from "../../../shared/toast";
+import { ExpiryQuickPicks } from "./ExpiryQuickPicks";
 
 type CreateShortLinkFormProps = {
   onCreated: (createdLink: CreatedShortLink) => void;
@@ -68,6 +70,11 @@ export function CreateShortLinkForm({
       });
 
       onCreated(createdLink);
+      showToast({
+        title: "Short link created",
+        message: createdLink.code,
+        variant: "success"
+      });
     } catch (error) {
       if (error instanceof ApiError) {
         setErrorMessage(toFriendlyErrorMessage(error.errorCode, error.message));
@@ -108,6 +115,11 @@ export function CreateShortLinkForm({
             value={form.expiredAtLocal}
             onChange={(event) =>
               setForm((current) => ({ ...current, expiredAtLocal: event.target.value }))
+            }
+          />
+          <ExpiryQuickPicks
+            onChange={(expiredAtLocal) =>
+              setForm((current) => ({ ...current, expiredAtLocal }))
             }
           />
         </Label>

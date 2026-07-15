@@ -168,15 +168,42 @@ public sealed class ShortLinkServiceTests
 
         public Task<IReadOnlyList<ShortLink>> ListRecentAsync(
             int limit,
+            DateTimeOffset? beforeCreatedAt = null,
+            string? beforeCode = null,
             CancellationToken cancellationToken = default)
         {
             var result = links.Values
                 .OrderByDescending(link => link.CreatedAt)
+                .ThenBy(link => link.Code, StringComparer.Ordinal)
+                .Where(link =>
+                    beforeCreatedAt is null
+                    || link.CreatedAt < beforeCreatedAt
+                    || (link.CreatedAt == beforeCreatedAt
+                        && !string.IsNullOrWhiteSpace(beforeCode)
+                        && string.Compare(link.Code, beforeCode, StringComparison.Ordinal) > 0))
                 .Take(limit)
                 .ToList();
 
             return Task.FromResult<IReadOnlyList<ShortLink>>(result);
         }
+
+        public Task<IReadOnlyList<ShortLink>> ListRecentPageAsync(
+            int skip,
+            int limit,
+            CancellationToken cancellationToken = default)
+        {
+            var result = links.Values
+                .OrderByDescending(link => link.CreatedAt)
+                .ThenBy(link => link.Code, StringComparer.Ordinal)
+                .Skip(skip)
+                .Take(limit)
+                .ToList();
+
+            return Task.FromResult<IReadOnlyList<ShortLink>>(result);
+        }
+
+        public Task<int> CountAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(links.Count);
 
         public Task<ShortLink?> FindByCodeAsync(string code, CancellationToken cancellationToken = default)
         {

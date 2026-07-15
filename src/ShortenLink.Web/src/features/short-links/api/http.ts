@@ -1,4 +1,5 @@
 import type { ApiErrorPayload } from "../types";
+import { showToast } from "../../../shared/toast";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -33,6 +34,12 @@ export async function fetchJson<T>(input: RequestInfo | URL, init?: RequestInit)
     errorCode: "unexpected_error",
     message: `Request failed with status ${response.status}.`
   };
+
+  showToast({
+    title: "Request failed",
+    message: payload.message,
+    variant: "error"
+  });
 
   throw new ApiError(response.status, payload);
 }

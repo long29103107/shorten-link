@@ -27,8 +27,19 @@ public sealed class ShortLinkService : IShortLinkService
 
     public Task<IReadOnlyList<ShortLink>> ListRecentAsync(
         int limit = 100,
+        DateTimeOffset? beforeCreatedAt = null,
+        string? beforeCode = null,
         CancellationToken cancellationToken = default) =>
-        repository.ListRecentAsync(Math.Clamp(limit, 1, 500), cancellationToken);
+        repository.ListRecentAsync(Math.Clamp(limit, 1, 500), beforeCreatedAt, beforeCode, cancellationToken);
+
+    public Task<IReadOnlyList<ShortLink>> ListRecentPageAsync(
+        int skip,
+        int limit = 100,
+        CancellationToken cancellationToken = default) =>
+        repository.ListRecentPageAsync(Math.Max(skip, 0), Math.Clamp(limit, 1, 500), cancellationToken);
+
+    public Task<int> CountAsync(CancellationToken cancellationToken = default) =>
+        repository.CountAsync(cancellationToken);
 
     public async Task<CreateShortLinkResult> CreateAsync(
         CreateShortLinkRequest request,

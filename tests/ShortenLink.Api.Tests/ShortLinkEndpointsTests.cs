@@ -86,21 +86,91 @@ public sealed class ShortLinkEndpointsTests
         var second = await CreateShortLinkAsync(client, "https://example.com/two");
 
         using var response = await client.GetAsync("/api/short-links?limit=10");
-        var payload = await response.Content.ReadFromJsonAsync<List<ShortLinkAdminListItemResponse>>();
+        var payload = await response.Content.ReadFromJsonAsync<ShortLinkAdminListResponse>();
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.NotNull(payload);
-        Assert.Equal(2, payload.Count);
+        Assert.Equal(2, payload.Items.Count);
+        Assert.Null(payload.NextCursor);
 
-        var firstItem = Assert.Single(payload, item => item.Code == first.Code);
+        var firstItem = Assert.Single(payload.Items, item => item.Code == first.Code);
         Assert.Equal(first.ShortUrl, firstItem.ShortUrl);
         Assert.Equal("https://example.com/one", firstItem.OriginalUrl);
         Assert.True(firstItem.IsActive);
 
-        var secondItem = Assert.Single(payload, item => item.Code == second.Code);
+        var secondItem = Assert.Single(payload.Items, item => item.Code == second.Code);
         Assert.Equal(second.ShortUrl, secondItem.ShortUrl);
         Assert.Equal("https://example.com/two", secondItem.OriginalUrl);
         Assert.True(secondItem.IsActive);
+    }
+
+    [Fact]
+    public async Task GetList_ReturnsCursorForNextPage()
+    {
+        await using var factory = new ShortLinkApiFactory(enableFrontendFallback: false);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        await CreateShortLinkAsync(client, "https://example.com/one");
+        await CreateShortLinkAsync(client, "https://example.com/two");
+        await CreateShortLinkAsync(client, "https://example.com/three");
+
+        using var firstResponse = await client.GetAsync("/api/short-links?limit=2");
+        var firstPage = await firstResponse.Content.ReadFromJsonAsync<ShortLinkAdminListResponse>();
+
+        Assert.Equal(HttpStatusCode.OK, firstResponse.StatusCode);
+        Assert.NotNull(firstPage);
+        Assert.Equal(2, firstPage.Items.Count);
+        Assert.False(string.IsNullOrWhiteSpace(firstPage.NextCursor));
+
+        using var secondResponse = await client.GetAsync($"/api/short-links?limit=2&cursor={Uri.EscapeDataString(firstPage.NextCursor)}");
+        var secondPage = await secondResponse.Content.ReadFromJsonAsync<ShortLinkAdminListResponse>();
+
+        Assert.Equal(HttpStatusCode.OK, secondResponse.StatusCode);
+        Assert.NotNull(secondPage);
+        Assert.Single(secondPage.Items);
+        Assert.Empty(firstPage.Items.Select(item => item.Code).Intersect(secondPage.Items.Select(item => item.Code)));
+        Assert.Equal(
+            new[]
+            {
+                "https://example.com/one",
+                "https://example.com/three",
+                "https://example.com/two"
+            },
+            firstPage.Items.Concat(secondPage.Items)
+                .Select(item => item.OriginalUrl)
+                .OrderBy(url => url, StringComparer.Ordinal)
+                .ToArray());
+        Assert.Null(secondPage.NextCursor);
+    }
+
+    [Fact]
+    public async Task PostMockSeedShortLinks_CreatesRequestedMockLinks()
+    {
+        await using var factory = new ShortLinkApiFactory(enableFrontendFallback: false);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        using var seedResponse = await client.PostAsync("/api/mock/seed-short-links?count=12", null);
+        var seedPayload = await seedResponse.Content.ReadFromJsonAsync<MockSeedShortLinksResponse>();
+
+        Assert.Equal(HttpStatusCode.OK, seedResponse.StatusCode);
+        Assert.NotNull(seedPayload);
+        Assert.Equal(12, seedPayload.RequestedCount);
+        Assert.Equal(12, seedPayload.CreatedCount);
+        Assert.Equal(0, seedPayload.FailedCount);
+        Assert.Equal(12, seedPayload.Codes.Count);
+
+        using var listResponse = await client.GetAsync("/api/short-links?limit=20");
+        var listPayload = await listResponse.Content.ReadFromJsonAsync<ShortLinkAdminListResponse>();
+
+        Assert.Equal(HttpStatusCode.OK, listResponse.StatusCode);
+        Assert.NotNull(listPayload);
+        Assert.Equal(12, listPayload.Items.Count);
     }
 
     [Fact]
@@ -760,6 +830,16 @@ public sealed class ShortLinkEndpointsTests
         DateTimeOffset CreatedAtUtc,
         DateTimeOffset? ExpiredAtUtc,
         bool IsActive);
+
+    private sealed record ShortLinkAdminListResponse(
+        IReadOnlyList<ShortLinkAdminListItemResponse> Items,
+        string? NextCursor);
+
+    private sealed record MockSeedShortLinksResponse(
+        int RequestedCount,
+        int CreatedCount,
+        int FailedCount,
+        IReadOnlyList<string> Codes);
 
     private sealed record ShortLinkErrorResponse(string ErrorCode, string Message);
 

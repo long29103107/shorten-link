@@ -8,6 +8,8 @@ using Microsoft.Extensions.Options;
 using ShortenLink.Core;
 using ShortenLink.Core.Domain;
 using ShortenLink.Core.Services;
+using System.Globalization;
+using System.Text;
 
 namespace ShortenLink.AspNetCore;
 
@@ -56,23 +58,61 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
         return endpoints;
     }
 
-    private static async Task<Ok<IReadOnlyList<ShortLinkAdminListItemResponse>>> ListShortLinksAsync(
+    private static async Task<Results<Ok<ShortLinkAdminListResponse>, JsonHttpResult<ShortLinkErrorResponse>>> ListShortLinksAsync(
         IShortLinkService shortLinkService,
         IOptions<ShortenLinkOptions> options,
         HttpContext httpContext,
         int? limit,
+        int? page,
+        string? cursor,
         CancellationToken cancellationToken)
     {
         var safeLimit = Math.Clamp(limit ?? 100, 1, 500);
-        var shortLinks = await shortLinkService.ListRecentAsync(safeLimit, cancellationToken)
+        if (page is not null)
+        {
+            var safePage = Math.Max(page.Value, 1);
+            var totalCount = await shortLinkService.CountAsync(cancellationToken)
+                .ConfigureAwait(false);
+            var numberedPageItems = await shortLinkService.ListRecentPageAsync(
+                    (safePage - 1) * safeLimit,
+                    safeLimit,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            var pageResponse = numberedPageItems
+                .Select(shortLink => ShortLinkAdminListItemResponse.FromDomain(
+                    shortLink,
+                    BuildShortUrl(shortLink.Code, options.Value, httpContext)))
+                .ToList();
+            var totalPages = Math.Max(1, (int)Math.Ceiling(totalCount / (double)safeLimit));
+
+            return TypedResults.Ok(new ShortLinkAdminListResponse(
+                pageResponse,
+                null,
+                totalCount,
+                safePage,
+                safeLimit,
+                totalPages));
+        }
+
+        var cursorResult = TryDecodeCursor(cursor, out var beforeCreatedAt, out var beforeCode);
+        if (!cursorResult)
+        {
+            return CreateErrorResponse("invalid_cursor", "Cursor is invalid.");
+        }
+
+        var shortLinks = await shortLinkService.ListRecentAsync(safeLimit + 1, beforeCreatedAt, beforeCode, cancellationToken)
             .ConfigureAwait(false);
-        var response = shortLinks
+        var pageItems = shortLinks.Take(safeLimit).ToList();
+        var response = pageItems
             .Select(shortLink => ShortLinkAdminListItemResponse.FromDomain(
                 shortLink,
                 BuildShortUrl(shortLink.Code, options.Value, httpContext)))
             .ToList();
+        var nextCursor = shortLinks.Count > safeLimit
+            ? EncodeCursor(pageItems[^1].CreatedAt, pageItems[^1].Code)
+            : null;
 
-        return TypedResults.Ok<IReadOnlyList<ShortLinkAdminListItemResponse>>(response);
+        return TypedResults.Ok(new ShortLinkAdminListResponse(response, nextCursor));
     }
 
     private static async Task<Results<Created<ShortLinkCreatedResponse>, JsonHttpResult<ShortLinkErrorResponse>>> CreateShortLinkAsync(
@@ -233,10 +273,55 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
             ShortLinkErrorCodes.InvalidExpiration => StatusCodes.Status400BadRequest,
             ShortLinkErrorCodes.InvalidUrl => StatusCodes.Status400BadRequest,
             ShortLinkErrorCodes.NotFound => StatusCodes.Status404NotFound,
+            "invalid_cursor" => StatusCodes.Status400BadRequest,
             ShortLinkErrorCodes.Expired => StatusCodes.Status410Gone,
             ShortLinkErrorCodes.Inactive => StatusCodes.Status410Gone,
             _ => StatusCodes.Status500InternalServerError
         };
+
+    private static bool TryDecodeCursor(
+        string? cursor,
+        out DateTimeOffset? beforeCreatedAt,
+        out string? beforeCode)
+    {
+        beforeCreatedAt = null;
+        beforeCode = null;
+        if (string.IsNullOrWhiteSpace(cursor))
+        {
+            return true;
+        }
+
+        try
+        {
+            var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(cursor));
+            var parts = decoded.Split('|', 2);
+            if (parts.Length != 2 || string.IsNullOrWhiteSpace(parts[1]))
+            {
+                return false;
+            }
+
+            if (DateTimeOffset.TryParseExact(
+                parts[0],
+                "O",
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.RoundtripKind,
+                out var parsed))
+            {
+                beforeCreatedAt = parsed;
+                beforeCode = parts[1];
+                return true;
+            }
+        }
+        catch (FormatException)
+        {
+        }
+
+        return false;
+    }
+
+    private static string EncodeCursor(DateTimeOffset beforeCreatedAt, string beforeCode) =>
+        Convert.ToBase64String(Encoding.UTF8.GetBytes(
+            $"{beforeCreatedAt.ToString("O", CultureInfo.InvariantCulture)}|{beforeCode}"));
 
     private static bool ShouldUseFallback(ShortenLinkOptions options, string? errorCode) =>
         options.Redirect.EnableFrontendFallback
@@ -291,6 +376,14 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
                 shortLink.ExpiresAt,
                 shortLink.IsActive);
     }
+
+    public sealed record ShortLinkAdminListResponse(
+        IReadOnlyList<ShortLinkAdminListItemResponse> Items,
+        string? NextCursor,
+        int? TotalCount = null,
+        int? Page = null,
+        int? PageSize = null,
+        int? TotalPages = null);
 
     public sealed record ShortLinkDetailsResponse(
         string Code,

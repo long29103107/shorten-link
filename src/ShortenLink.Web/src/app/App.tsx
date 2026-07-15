@@ -5,24 +5,38 @@ import { NotFoundPage } from "../features/short-links/pages/NotFoundPage";
 import { ShortLinkDetailPage } from "../features/short-links/pages/ShortLinkDetailPage";
 import type { AppRoute, CreatedShortLink } from "../features/short-links/types";
 import { Button } from "../shared/components/ui/button";
+import { ConfirmDialog } from "../shared/components/ConfirmDialog";
+import { Toaster } from "../shared/components/Toaster";
 import { parseRoute } from "./router";
 
 export function App() {
   const [route, setRoute] = useState<AppRoute>(() => parseRoute(window.location.pathname));
   const [recentLink, setRecentLink] = useState<CreatedShortLink | null>(null);
+  const [hasAdminEditChanges, setHasAdminEditChanges] = useState(false);
+  const [pendingNavigationPath, setPendingNavigationPath] = useState<string | null>(null);
 
   useEffect(() => {
     const handlePopState = () => {
+      const nextPath = window.location.pathname;
+      if (route.kind === "admin" && hasAdminEditChanges && nextPath !== "/admin") {
+        window.history.pushState({}, "", "/admin");
+        setPendingNavigationPath(nextPath);
+        startTransition(() => {
+          setRoute(parseRoute("/admin"));
+        });
+        return;
+      }
+
       startTransition(() => {
-        setRoute(parseRoute(window.location.pathname));
+        setRoute(parseRoute(nextPath));
       });
     };
 
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, []);
+  }, [hasAdminEditChanges, route.kind]);
 
-  const navigate = (path: string) => {
+  const commitNavigation = (path: string) => {
     if (window.location.pathname !== path) {
       window.history.pushState({}, "", path);
     }
@@ -30,6 +44,25 @@ export function App() {
     startTransition(() => {
       setRoute(parseRoute(path));
     });
+  };
+
+  const navigate = (path: string) => {
+    if (route.kind === "admin" && hasAdminEditChanges && path !== "/admin") {
+      setPendingNavigationPath(path);
+      return;
+    }
+
+    commitNavigation(path);
+  };
+
+  const confirmDiscardAndNavigate = () => {
+    if (!pendingNavigationPath) {
+      return;
+    }
+
+    setHasAdminEditChanges(false);
+    commitNavigation(pendingNavigationPath);
+    setPendingNavigationPath(null);
   };
 
   const pageTitle =
@@ -53,12 +86,6 @@ export function App() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="window-controls" aria-hidden="true">
-          <span className="window-dot window-dot-red" />
-          <span className="window-dot window-dot-yellow" />
-          <span className="window-dot window-dot-green" />
-        </div>
-
         <div className="brand-block">
           <div className="brand-mark">SL</div>
           <div>
@@ -101,10 +128,6 @@ export function App() {
             <h1 className="app-title">{pageTitle}</h1>
             <p className="page-description">{pageDescription}</p>
           </div>
-          <div className="topbar-tools" aria-hidden="true">
-            <span />
-            <span />
-          </div>
         </header>
 
         <div className="workspace">
@@ -115,7 +138,9 @@ export function App() {
           />
         ) : null}
 
-        {route.kind === "admin" ? <ShortLinkAdminPage /> : null}
+        {route.kind === "admin" ? (
+          <ShortLinkAdminPage onDirtyChange={setHasAdminEditChanges} />
+        ) : null}
 
         {route.kind === "detail" ? (
           <ShortLinkDetailPage
@@ -129,6 +154,16 @@ export function App() {
         ) : null}
         </div>
       </main>
+      <ConfirmDialog
+        open={pendingNavigationPath !== null}
+        title="Discard form changes?"
+        description="You have unsaved changes in the admin form. Leave this page and discard them?"
+        confirmLabel="Discard changes"
+        variant="destructive"
+        onConfirm={confirmDiscardAndNavigate}
+        onCancel={() => setPendingNavigationPath(null)}
+      />
+      <Toaster />
     </div>
   );
 }

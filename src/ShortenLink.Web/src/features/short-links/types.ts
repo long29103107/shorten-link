@@ -43,6 +43,15 @@ export type ShortLinkAdminItem = {
   isActive: boolean;
 };
 
+export type ShortLinkAdminPageResult = {
+  items: ShortLinkAdminItem[];
+  nextCursor: string | null;
+  totalCount: number | null;
+  page: number | null;
+  pageSize: number | null;
+  totalPages: number | null;
+};
+
 export type DeactivatedShortLink = {
   code: string;
   isActive: boolean;

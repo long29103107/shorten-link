@@ -5,6 +5,7 @@ import type {
   DeactivatedShortLink,
   DeletedShortLink,
   ShortLinkAdminItem,
+  ShortLinkAdminPageResult,
   ShortLinkDetails,
   UpdateShortLinkRequest
 } from "../types";
@@ -22,8 +23,16 @@ export async function getShortLinkDetails(code: string): Promise<ShortLinkDetail
   return fetchJson<ShortLinkDetails>(`/api/short-links/${encodeURIComponent(code)}`);
 }
 
-export async function listShortLinks(limit = 100): Promise<ShortLinkAdminItem[]> {
-  return fetchJson<ShortLinkAdminItem[]>(`/api/short-links?limit=${limit}`);
+export async function listShortLinks(
+  limit = 25,
+  page = 1
+): Promise<ShortLinkAdminPageResult> {
+  const params = new URLSearchParams({
+    limit: String(limit),
+    page: String(page)
+  });
+
+  return fetchJson<ShortLinkAdminPageResult>(`/api/short-links?${params.toString()}`);
 }
 
 export async function deactivateShortLink(code: string): Promise<DeactivatedShortLink> {

@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { ApiError } from "../api/http";
 import {
   activateShortLink,
+  createShortLink,
   deactivateShortLink,
   deleteShortLink,
   listShortLinks,
@@ -12,6 +13,10 @@ import { formatDateTime, toFriendlyErrorMessage } from "../types";
 import { Badge } from "../../../shared/components/ui/badge";
 import { Button } from "../../../shared/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../shared/components/ui/card";
+import { ConfirmDialog } from "../../../shared/components/ConfirmDialog";
+import { EmptyState } from "../../../shared/components/EmptyState";
+import { TableSkeleton } from "../../../shared/components/TableSkeleton";
+import { showToast } from "../../../shared/toast";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,26 +33,76 @@ import {
   TableHeader,
   TableRow
 } from "../../../shared/components/ui/table";
+import { useClickOutside } from "../../../shared/hooks/useClickOutside";
+import { ExpiryQuickPicks } from "../components/ExpiryQuickPicks";
 
-export function ShortLinkAdminPage() {
+type ShortLinkAdminPageProps = {
+  onDirtyChange?: (isDirty: boolean) => void;
+};
+
+type ConfirmAction = {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  variant?: "default" | "destructive";
+  onConfirm: () => void;
+};
+
+export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
   const [links, setLinks] = useState<ShortLinkAdminItem[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [busyCode, setBusyCode] = useState<string | null>(null);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [isBulkUpdating, setIsBulkUpdating] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [openMenuCode, setOpenMenuCode] = useState<string | null>(null);
   const [editingCode, setEditingCode] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ originalUrl: "", expiredAtLocal: "" });
+  const [initialEditForm, setInitialEditForm] = useState({ originalUrl: "", expiredAtLocal: "" });
   const [tooltip, setTooltip] = useState<{ text: string; x: number; y: number } | null>(null);
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
+  const [selectedCodes, setSelectedCodes] = useState<Set<string>>(() => new Set());
+  const [pageSize, setPageSize] = useState(25);
+  const [pageNumber, setPageNumber] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [isPageSizeMenuOpen, setIsPageSizeMenuOpen] = useState(false);
   const copyFeedbackTimeoutRef = useRef<number | null>(null);
+  const pageSizeMenuRef = useRef<HTMLLabelElement | null>(null);
 
-  const loadLinks = async () => {
+  const selectedLinks = links.filter((link) => selectedCodes.has(link.code));
+  const selectedCount = selectedCodes.size;
+  const allPageCodes = links.map((link) => link.code);
+  const isPageSelected = allPageCodes.length > 0 && allPageCodes.every((code) => selectedCodes.has(code));
+  const canBulkDeactivate = selectedLinks.some((link) => link.isActive);
+  const canBulkActivate = selectedLinks.some((link) => !link.isActive);
+  const shouldShowList = !isLoading && !errorMessage && links.length > 0;
+  const editingLink = editingCode
+    ? links.find((link) => link.code === editingCode) ?? null
+    : null;
+  const isEditorOpen = isCreating || editingLink !== null;
+  const hasEditChanges = isEditorOpen
+    && (editForm.originalUrl !== initialEditForm.originalUrl
+      || editForm.expiredAtLocal !== initialEditForm.expiredAtLocal);
+
+  const loadLinks = async (nextPageNumber = pageNumber) => {
     setIsLoading(true);
     setErrorMessage(null);
 
     try {
-      setLinks(await listShortLinks(100));
+      const result = await listShortLinks(pageSize, nextPageNumber);
+      setLinks(result.items);
+      setTotalCount(result.totalCount ?? result.items.length);
+      setTotalPages(result.totalPages ?? 1);
+      setSelectedCodes(new Set());
+      setPageNumber(result.page ?? nextPageNumber);
     } catch (error) {
+      setLinks([]);
+      setTotalCount(0);
+      setTotalPages(1);
+      setSelectedCodes(new Set());
       if (error instanceof ApiError) {
         setErrorMessage(toFriendlyErrorMessage(error.errorCode, error.message));
       } else {
@@ -59,14 +114,38 @@ export function ShortLinkAdminPage() {
   };
 
   useEffect(() => {
-    void loadLinks();
+    void loadLinks(1);
 
     return () => {
       if (copyFeedbackTimeoutRef.current !== null) {
         window.clearTimeout(copyFeedbackTimeoutRef.current);
       }
     };
-  }, []);
+  }, [pageSize]);
+
+  useEffect(() => {
+    onDirtyChange?.(hasEditChanges);
+  }, [hasEditChanges, onDirtyChange]);
+
+  useClickOutside(
+    [pageSizeMenuRef],
+    () => setIsPageSizeMenuOpen(false),
+    isPageSizeMenuOpen
+  );
+
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!hasEditChanges) {
+        return;
+      }
+
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasEditChanges]);
 
   const handleCopy = async (link: ShortLinkAdminItem, trigger: HTMLElement) => {
     try {
@@ -103,6 +182,11 @@ export function ShortLinkAdminPage() {
           link.code === response.code ? { ...link, isActive: response.isActive } : link
         )
       );
+      showToast({
+        title: "Short link deactivated",
+        message: code,
+        variant: "success"
+      });
     } catch (error) {
       if (error instanceof ApiError) {
         setErrorMessage(toFriendlyErrorMessage(error.errorCode, error.message));
@@ -125,6 +209,11 @@ export function ShortLinkAdminPage() {
           link.code === response.code ? { ...link, isActive: response.isActive } : link
         )
       );
+      showToast({
+        title: "Short link activated",
+        message: code,
+        variant: "success"
+      });
     } catch (error) {
       if (error instanceof ApiError) {
         setErrorMessage(toFriendlyErrorMessage(error.errorCode, error.message));
@@ -137,13 +226,61 @@ export function ShortLinkAdminPage() {
   };
 
   const startEdit = (link: ShortLinkAdminItem) => {
+    setIsCreating(false);
     setEditingCode(link.code);
     setOpenMenuCode(null);
     setErrorMessage(null);
-    setEditForm({
+    const nextForm = {
       originalUrl: link.originalUrl,
       expiredAtLocal: toDateTimeLocalValue(link.expiredAtUtc)
-    });
+    };
+    setEditForm(nextForm);
+    setInitialEditForm(nextForm);
+  };
+
+  const startCreate = () => {
+    const nextForm = { originalUrl: "", expiredAtLocal: "" };
+    setIsCreating(true);
+    setEditingCode(null);
+    setOpenMenuCode(null);
+    setErrorMessage(null);
+    setEditForm(nextForm);
+    setInitialEditForm(nextForm);
+  };
+
+  const closeEditor = () => {
+    setIsCreating(false);
+    setEditingCode(null);
+    setInitialEditForm({ originalUrl: "", expiredAtLocal: "" });
+  };
+
+  const handleCreate = async () => {
+    setBusyCode("__create__");
+    setErrorMessage(null);
+
+    try {
+      const created = await createShortLink({
+        originalUrl: editForm.originalUrl.trim(),
+        expiredAtUtc: editForm.expiredAtLocal
+          ? new Date(editForm.expiredAtLocal).toISOString()
+          : undefined
+      });
+      closeEditor();
+      await loadLinks(1);
+      showToast({
+        title: "Short link created",
+        message: created.code,
+        variant: "success"
+      });
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setErrorMessage(toFriendlyErrorMessage(error.errorCode, error.message));
+      } else {
+        setErrorMessage("The link could not be created.");
+      }
+    } finally {
+      setBusyCode(null);
+    }
   };
 
   const handleSaveEdit = async (code: string) => {
@@ -160,7 +297,12 @@ export function ShortLinkAdminPage() {
       setLinks((current) =>
         current.map((link) => (link.code === updated.code ? updated : link))
       );
-      setEditingCode(null);
+      closeEditor();
+      showToast({
+        title: "Short link updated",
+        message: code,
+        variant: "success"
+      });
     } catch (error) {
       if (error instanceof ApiError) {
         setErrorMessage(toFriendlyErrorMessage(error.errorCode, error.message));
@@ -180,9 +322,19 @@ export function ShortLinkAdminPage() {
     try {
       const response = await deleteShortLink(code);
       setLinks((current) => current.filter((link) => link.code !== response.code));
+      setSelectedCodes((current) => {
+        const next = new Set(current);
+        next.delete(response.code);
+        return next;
+      });
       if (editingCode === response.code) {
         setEditingCode(null);
       }
+      showToast({
+        title: "Short link deleted",
+        message: response.code,
+        variant: "success"
+      });
     } catch (error) {
       if (error instanceof ApiError) {
         setErrorMessage(toFriendlyErrorMessage(error.errorCode, error.message));
@@ -192,6 +344,160 @@ export function ShortLinkAdminPage() {
     } finally {
       setBusyCode(null);
     }
+  };
+
+  const handleBulkDelete = async () => {
+    const codes = Array.from(selectedCodes);
+    if (codes.length === 0) {
+      return;
+    }
+
+    setIsBulkDeleting(true);
+    setErrorMessage(null);
+
+    try {
+      await Promise.all(codes.map((code) => deleteShortLink(code)));
+      setLinks((current) => current.filter((link) => !selectedCodes.has(link.code)));
+      setSelectedCodes(new Set());
+      if (editingCode && selectedCodes.has(editingCode)) {
+        setEditingCode(null);
+      }
+      showToast({
+        title: "Selected links deleted",
+        message: `${codes.length} link${codes.length === 1 ? "" : "s"} removed`,
+        variant: "success"
+      });
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setErrorMessage(toFriendlyErrorMessage(error.errorCode, error.message));
+      } else {
+        setErrorMessage("Selected links could not be deleted.");
+      }
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
+
+  const handleBulkStatusChange = async (nextIsActive: boolean) => {
+    const codes = Array.from(selectedCodes);
+    if (codes.length === 0) {
+      return;
+    }
+
+    setIsBulkUpdating(true);
+    setErrorMessage(null);
+
+    try {
+      const responses = await Promise.all(
+        codes.map((code) =>
+          nextIsActive ? activateShortLink(code) : deactivateShortLink(code)
+        )
+      );
+      const updatedCodes = new Set(responses.map((response) => response.code));
+      setLinks((current) =>
+        current.map((link) =>
+          updatedCodes.has(link.code) ? { ...link, isActive: nextIsActive } : link
+        )
+      );
+      setSelectedCodes(new Set());
+      showToast({
+        title: nextIsActive ? "Selected links activated" : "Selected links deactivated",
+        message: `${codes.length} link${codes.length === 1 ? "" : "s"} updated`,
+        variant: "success"
+      });
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setErrorMessage(toFriendlyErrorMessage(error.errorCode, error.message));
+      } else {
+        setErrorMessage(nextIsActive
+          ? "Selected links could not be activated."
+          : "Selected links could not be deactivated.");
+      }
+    } finally {
+      setIsBulkUpdating(false);
+    }
+  };
+
+  const requestDelete = (code: string) => {
+    setOpenMenuCode(null);
+    setConfirmAction({
+      title: "Delete short link?",
+      description: `This will permanently delete ${code}. This action cannot be undone.`,
+      confirmLabel: "Delete",
+      variant: "destructive",
+      onConfirm: () => void handleDelete(code)
+    });
+  };
+
+  const requestStatusChange = (link: ShortLinkAdminItem) => {
+    setOpenMenuCode(null);
+    setConfirmAction({
+      title: link.isActive ? "Deactivate short link?" : "Activate short link?",
+      description: link.isActive
+        ? `Deactivate ${link.code}? Redirects for this link will stop working.`
+        : `Activate ${link.code}? Redirects for this link will start working again.`,
+      confirmLabel: link.isActive ? "Deactivate" : "Activate",
+      variant: link.isActive ? "destructive" : "default",
+      onConfirm: () => {
+        if (link.isActive) {
+          void handleDeactivate(link.code);
+        } else {
+          void handleActivate(link.code);
+        }
+      }
+    });
+  };
+
+  const requestBulkDelete = () => {
+    setConfirmAction({
+      title: "Delete selected links?",
+      description: `This will permanently delete ${selectedCount} selected link${selectedCount === 1 ? "" : "s"}. This action cannot be undone.`,
+      confirmLabel: "Delete selected",
+      variant: "destructive",
+      onConfirm: () => void handleBulkDelete()
+    });
+  };
+
+  const requestBulkStatusChange = (nextIsActive: boolean) => {
+    setConfirmAction({
+      title: nextIsActive ? "Activate selected links?" : "Deactivate selected links?",
+      description: nextIsActive
+        ? `Activate ${selectedCount} selected link${selectedCount === 1 ? "" : "s"}?`
+        : `Deactivate ${selectedCount} selected link${selectedCount === 1 ? "" : "s"}? Redirects for these links will stop working.`,
+      confirmLabel: nextIsActive ? "Activate selected" : "Deactivate selected",
+      variant: nextIsActive ? "default" : "destructive",
+      onConfirm: () => void handleBulkStatusChange(nextIsActive)
+    });
+  };
+
+  const toggleSelected = (code: string) => {
+    setSelectedCodes((current) => {
+      const next = new Set(current);
+      if (next.has(code)) {
+        next.delete(code);
+      } else {
+        next.add(code);
+      }
+
+      return next;
+    });
+  };
+
+  const togglePageSelected = () => {
+    setSelectedCodes((current) => {
+      const next = new Set(current);
+      if (isPageSelected) {
+        allPageCodes.forEach((code) => next.delete(code));
+      } else {
+        allPageCodes.forEach((code) => next.add(code));
+      }
+
+      return next;
+    });
+  };
+
+  const goToPage = (nextPageNumber: number) => {
+    void loadLinks(Math.max(1, Math.min(nextPageNumber, totalPages)));
   };
 
   return (
@@ -204,25 +510,73 @@ export function ShortLinkAdminPage() {
           <CardTitle>Manage generated short links.</CardTitle>
           </div>
         </div>
-        <Button variant="secondary" onClick={loadLinks}>
-          {isLoading ? "Refreshing..." : "Refresh"}
-        </Button>
+        <Button onClick={startCreate}>Create</Button>
       </CardHeader>
 
       <CardContent>
-      {errorMessage ? <p className="feedback feedback-error">{errorMessage}</p> : null}
-
-      {isLoading ? <p className="muted-copy">Loading links...</p> : null}
-
-      {!isLoading && links.length === 0 ? (
-        <p className="muted-copy">No short links yet. Create one first, then manage it here.</p>
+      {shouldShowList && selectedCount > 0 ? (
+      <div className="admin-bulk-bar">
+        <div className="admin-toolbar-group">
+          {canBulkDeactivate ? (
+          <Button
+            variant="secondary"
+            disabled={isBulkUpdating || isBulkDeleting}
+            onClick={() => requestBulkStatusChange(false)}
+          >
+            {isBulkUpdating ? "Updating..." : `Deactivate selected (${selectedCount})`}
+          </Button>
+          ) : null}
+          {canBulkActivate ? (
+          <Button
+            variant="secondary"
+            disabled={isBulkUpdating || isBulkDeleting}
+            onClick={() => requestBulkStatusChange(true)}
+          >
+            {isBulkUpdating ? "Updating..." : `Activate selected (${selectedCount})`}
+          </Button>
+          ) : null}
+          <Button
+            variant="destructive"
+            disabled={isBulkDeleting || isBulkUpdating}
+            onClick={requestBulkDelete}
+          >
+            {isBulkDeleting ? "Deleting..." : `Delete selected (${selectedCount})`}
+          </Button>
+          <Button
+            variant="secondary"
+            disabled={isBulkDeleting || isBulkUpdating}
+            onClick={() => setSelectedCodes(new Set())}
+          >
+            Clear selected
+          </Button>
+        </div>
+      </div>
       ) : null}
 
-      {!isLoading && links.length > 0 ? (
+      {isLoading ? <TableSkeleton /> : null}
+
+      {!isLoading && !shouldShowList ? (
+        <EmptyState
+          title="No data"
+          description="Create a short link first, then manage it here."
+        />
+      ) : null}
+
+      {shouldShowList ? (
         <div className="admin-table-wrap">
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>
+                  <input
+                    type="checkbox"
+                    className="bulk-checkbox"
+                    checked={isPageSelected}
+                    disabled={links.length === 0}
+                    aria-label="Select all links on this page"
+                    onChange={togglePageSelected}
+                  />
+                </TableHead>
                 <TableHead>Code</TableHead>
                 <TableHead>Destination</TableHead>
                 <TableHead>Created</TableHead>
@@ -235,6 +589,15 @@ export function ShortLinkAdminPage() {
               {links.map((link) => (
                 <Fragment key={link.code}>
                 <TableRow>
+                  <TableCell>
+                    <input
+                      type="checkbox"
+                      className="bulk-checkbox"
+                      checked={selectedCodes.has(link.code)}
+                      aria-label={`Select ${link.code}`}
+                      onChange={() => toggleSelected(link.code)}
+                    />
+                  </TableCell>
                   <TableCell>
                     <a href={link.shortUrl} target="_blank" rel="noreferrer">
                       {link.code}
@@ -293,15 +656,15 @@ export function ShortLinkAdminPage() {
                       >
                         <span aria-hidden="true" />
                       </button>
-                      <DropdownMenu>
+                      <DropdownMenu
+                        open={openMenuCode === link.code}
+                        onOpenChange={(open) =>
+                          setOpenMenuCode(open ? link.code : null)
+                        }
+                      >
                         <DropdownMenuTrigger
                           aria-expanded={openMenuCode === link.code}
                           aria-label={`Actions for ${link.code}`}
-                          onClick={() =>
-                            setOpenMenuCode((current) =>
-                              current === link.code ? null : link.code
-                            )
-                          }
                         >
                           ...
                         </DropdownMenuTrigger>
@@ -312,14 +675,7 @@ export function ShortLinkAdminPage() {
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               disabled={busyCode === link.code}
-                              onClick={() => {
-                                setOpenMenuCode(null);
-                                if (link.isActive) {
-                                  void handleDeactivate(link.code);
-                                } else {
-                                  void handleActivate(link.code);
-                                }
-                              }}
+                              onClick={() => requestStatusChange(link)}
                             >
                               {busyCode === link.code
                                 ? "Updating"
@@ -330,7 +686,7 @@ export function ShortLinkAdminPage() {
                             <DropdownMenuItem
                               className="danger-link"
                               disabled={busyCode === link.code}
-                              onClick={() => handleDelete(link.code)}
+                              onClick={() => requestDelete(link.code)}
                             >
                               Delete
                             </DropdownMenuItem>
@@ -340,56 +696,78 @@ export function ShortLinkAdminPage() {
                     </div>
                   </TableCell>
                 </TableRow>
-                {editingCode === link.code ? (
-                  <TableRow className="edit-row">
-                    <TableCell colSpan={6}>
-                      <div className="edit-panel">
-                        <Label className="field">
-                          <span className="field-label">Destination URL</span>
-                          <Input
-                            type="url"
-                            value={editForm.originalUrl}
-                            onChange={(event) =>
-                              setEditForm((current) => ({
-                                ...current,
-                                originalUrl: event.target.value
-                              }))
-                            }
-                          />
-                        </Label>
-                        <Label className="field">
-                          <span className="field-label">Expiry</span>
-                          <Input
-                            type="datetime-local"
-                            value={editForm.expiredAtLocal}
-                            onChange={(event) =>
-                              setEditForm((current) => ({
-                                ...current,
-                                expiredAtLocal: event.target.value
-                              }))
-                            }
-                          />
-                        </Label>
-                        <div className="edit-actions">
-                          <Button
-                            disabled={busyCode === link.code}
-                            onClick={() => handleSaveEdit(link.code)}
-                          >
-                            {busyCode === link.code ? "Saving" : "Save"}
-                          </Button>
-                          <Button variant="secondary" onClick={() => setEditingCode(null)}>
-                            Cancel
-                          </Button>
-                        </div>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ) : null}
                 </Fragment>
               ))}
             </TableBody>
           </Table>
         </div>
+      ) : null}
+      {shouldShowList ? (
+      <div className="admin-pagination">
+        <div className="pagination-summary">
+          <span>{totalCount} items</span>
+          <span>Page {pageNumber} of {totalPages}</span>
+        </div>
+        <div className="pagination-controls">
+          <label className="pagination-page-size" ref={pageSizeMenuRef}>
+            <button
+              type="button"
+              className="pagination-page-size-trigger"
+              aria-expanded={isPageSizeMenuOpen}
+              aria-haspopup="listbox"
+              onClick={() => setIsPageSizeMenuOpen((current) => !current)}
+            >
+              {pageSize}
+            </button>
+            <span>/ page</span>
+            {isPageSizeMenuOpen ? (
+              <div className="pagination-page-size-menu" role="listbox">
+                {[10, 25, 50, 100].map((size) => (
+                  <button
+                    key={size}
+                    type="button"
+                    className={size === pageSize ? "pagination-page-size-option pagination-page-size-option-active" : "pagination-page-size-option"}
+                    role="option"
+                    aria-selected={size === pageSize}
+                    onClick={() => {
+                      setPageSize(size);
+                      setIsPageSizeMenuOpen(false);
+                    }}
+                  >
+                    {size}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </label>
+        <div className="pagination-pages" aria-label="Pagination">
+          {pageNumber > 1 ? (
+          <button type="button" className="pagination-arrow pagination-arrow-prev" aria-label="Previous page" onClick={() => goToPage(pageNumber - 1)}>
+            ‹
+          </button>
+          ) : null}
+          {getVisiblePages(pageNumber, totalPages).map((item, index) =>
+            item === "gap" ? (
+              <span key={`gap-${index}`} className="pagination-gap">...</span>
+            ) : (
+              <button
+                key={item}
+                type="button"
+                className={item === pageNumber ? "pagination-page pagination-page-active" : "pagination-page"}
+                onClick={() => goToPage(item)}
+              >
+                {item}
+              </button>
+            )
+          )}
+          {pageNumber < totalPages ? (
+          <button type="button" className="pagination-arrow pagination-arrow-next" aria-label="Next page" onClick={() => goToPage(pageNumber + 1)}>
+            ›
+          </button>
+          ) : null}
+        </div>
+        </div>
+      </div>
       ) : null}
       {tooltip ? (
         <div
@@ -402,7 +780,95 @@ export function ShortLinkAdminPage() {
           {tooltip.text}
         </div>
       ) : null}
+      {isEditorOpen ? (
+        <div className="dialog-backdrop" role="presentation">
+          <div
+            className="edit-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="edit-dialog-title"
+          >
+            <div>
+              <p className="eyebrow">{isCreating ? "Create" : "Edit"}</p>
+              <h2 id="edit-dialog-title">
+                {isCreating ? "Create short link" : `Update ${editingLink?.code}`}
+              </h2>
+            </div>
+            <Label className="field">
+              <span className="field-label">Destination URL</span>
+              <Input
+                type="url"
+                value={editForm.originalUrl}
+                onChange={(event) =>
+                  setEditForm((current) => ({
+                    ...current,
+                    originalUrl: event.target.value
+                  }))
+                }
+              />
+            </Label>
+            <Label className="field">
+              <span className="field-label">Expiry</span>
+              <Input
+                type="datetime-local"
+                value={editForm.expiredAtLocal}
+                onChange={(event) =>
+                  setEditForm((current) => ({
+                    ...current,
+                    expiredAtLocal: event.target.value
+                  }))
+                }
+              />
+              <ExpiryQuickPicks
+                onChange={(expiredAtLocal) =>
+                  setEditForm((current) => ({
+                    ...current,
+                    expiredAtLocal
+                  }))
+                }
+              />
+            </Label>
+            <div className="dialog-actions">
+              <Button
+                variant="secondary"
+                onClick={closeEditor}
+              >
+                Cancel
+              </Button>
+              <Button
+                disabled={busyCode === (isCreating ? "__create__" : editingLink?.code)}
+                onClick={() => {
+                  if (isCreating) {
+                    void handleCreate();
+                  } else if (editingLink) {
+                    void handleSaveEdit(editingLink.code);
+                  }
+                }}
+              >
+                {busyCode === (isCreating ? "__create__" : editingLink?.code)
+                  ? "Saving"
+                  : isCreating
+                    ? "Create"
+                    : "Save"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       </CardContent>
+      <ConfirmDialog
+        open={confirmAction !== null}
+        title={confirmAction?.title ?? ""}
+        description={confirmAction?.description ?? ""}
+        confirmLabel={confirmAction?.confirmLabel ?? "Confirm"}
+        variant={confirmAction?.variant}
+        onConfirm={() => {
+          const action = confirmAction;
+          setConfirmAction(null);
+          action?.onConfirm();
+        }}
+        onCancel={() => setConfirmAction(null)}
+      />
     </Card>
   );
 }
@@ -419,4 +885,20 @@ function toDateTimeLocalValue(value: string | null): string {
 
   const offsetMs = date.getTimezoneOffset() * 60_000;
   return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
+function getVisiblePages(currentPage: number, totalPages: number): Array<number | "gap"> {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
+  }
+
+  if (currentPage <= 4) {
+    return [1, 2, 3, 4, 5, "gap", totalPages];
+  }
+
+  if (currentPage >= totalPages - 3) {
+    return [1, "gap", totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+  }
+
+  return [1, "gap", currentPage - 1, currentPage, currentPage + 1, "gap", totalPages];
 }
