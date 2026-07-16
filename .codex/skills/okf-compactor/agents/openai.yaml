@@ -1,0 +1,4 @@
+interface:
+  display_name: "OKF Compactor"
+  short_description: "Compact OKF markdown history."
+  default_prompt: "Compact this OKF phase or task history while preserving searchable ids and current state."

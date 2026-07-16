@@ -1,0 +1,4 @@
+interface:
+  display_name: "Verification Triage"
+  short_description: "Classify failed verification."
+  default_prompt: "Triage this build, test, package, or script verification result and recommend the smallest next action."

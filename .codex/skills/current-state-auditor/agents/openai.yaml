@@ -1,0 +1,4 @@
+interface:
+  display_name: "Current State Auditor"
+  short_description: "Audit phase and task state."
+  default_prompt: "Audit the current repo state and report the active phase, current task, blockers, or done status."

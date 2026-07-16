@@ -1,0 +1,4 @@
+interface:
+  display_name: "Scope Output Clarifier"
+  short_description: "Pin down the required output."
+  default_prompt: "Clarify the concrete output, scope boundary, and smallest useful next action for this request."

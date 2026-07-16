@@ -1,0 +1,4 @@
+interface:
+  display_name: "ShortenLink Release Gate"
+  short_description: "Run safe release checks."
+  default_prompt: "Run or triage the safe ShortenLink release gate without publishing or touching secrets."
