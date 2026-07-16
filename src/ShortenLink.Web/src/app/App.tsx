@@ -1,5 +1,7 @@
 import { startTransition, useEffect, useState } from "react";
 import { CreateShortLinkPage } from "../features/short-links/pages/CreateShortLinkPage";
+import { getAdminPermissionState } from "../features/short-links/api/adminSecurity";
+import { SecurityAssignmentsPage } from "../features/short-links/pages/SecurityAssignmentsPage";
 import { ShortLinkAdminPage } from "../features/short-links/pages/ShortLinkAdminPage";
 import { StatusPage } from "../features/short-links/pages/StatusPage";
 import { ShortLinkDetailPage } from "../features/short-links/pages/ShortLinkDetailPage";
@@ -14,6 +16,7 @@ export function App() {
   const [recentLink, setRecentLink] = useState<CreatedShortLink | null>(null);
   const [hasAdminEditChanges, setHasAdminEditChanges] = useState(false);
   const [pendingNavigationPath, setPendingNavigationPath] = useState<string | null>(null);
+  const adminPermissions = getAdminPermissionState();
 
   useEffect(() => {
     const handlePopState = () => {
@@ -68,6 +71,8 @@ export function App() {
   const pageTitle =
     route.kind === "admin"
       ? "Admin"
+      : route.kind === "security"
+        ? "Security"
       : route.kind === "detail"
         ? "Link detail"
         : route.kind === "status"
@@ -77,6 +82,8 @@ export function App() {
   const pageDescription =
     route.kind === "admin"
       ? "Manage generated random short links"
+      : route.kind === "security"
+        ? "Manage user, role, and permission assignments"
       : route.kind === "detail"
         ? "Inspect and retire one generated link"
         : route.kind === "status"
@@ -138,6 +145,17 @@ export function App() {
             <span className="nav-glyph" aria-hidden="true" />
             Admin URLs
           </Button>
+          {adminPermissions.canManageSecurityAssignments ? (
+            <Button
+              className="sidebar-nav-button"
+              aria-current={route.kind === "security" ? "page" : undefined}
+              variant="ghost"
+              onClick={() => navigate("/security")}
+            >
+              <span className="nav-glyph" aria-hidden="true" />
+              Security
+            </Button>
+          ) : null}
         </nav>
 
       </aside>
@@ -161,6 +179,10 @@ export function App() {
 
         {route.kind === "admin" ? (
           <ShortLinkAdminPage onDirtyChange={setHasAdminEditChanges} />
+        ) : null}
+
+        {route.kind === "security" ? (
+          <SecurityAssignmentsPage />
         ) : null}
 
         {route.kind === "detail" ? (

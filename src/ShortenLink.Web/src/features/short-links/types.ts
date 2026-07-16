@@ -1,6 +1,7 @@
 export type AppRoute =
   | { kind: "home" }
   | { kind: "admin" }
+  | { kind: "security" }
   | { kind: "detail"; code: string }
   | { kind: "status"; statusCode: HttpStatusCode };
 

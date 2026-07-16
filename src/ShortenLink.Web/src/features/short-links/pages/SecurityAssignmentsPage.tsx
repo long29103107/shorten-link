@@ -1,0 +1,469 @@
+import { useEffect, useState } from "react";
+import { ApiError } from "../api/http";
+import {
+  disableSecurityAssignment,
+  listSecurityAssignments,
+  upsertSecurityAssignment
+} from "../api/shortLinksApi";
+import { getAdminPermissionState } from "../api/adminSecurity";
+import type { SecurityAssignment } from "../types";
+import { formatDateTime, toFriendlyErrorMessage } from "../types";
+import { Badge } from "../../../shared/components/ui/badge";
+import { Button } from "../../../shared/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "../../../shared/components/ui/card";
+import { ConfirmDialog } from "../../../shared/components/ConfirmDialog";
+import { EmptyState } from "../../../shared/components/EmptyState";
+import { Input } from "../../../shared/components/ui/input";
+import { Label } from "../../../shared/components/ui/label";
+import { showToast } from "../../../shared/toast";
+
+type SecurityAssignmentFieldErrors = {
+  name?: string;
+  credentialKey?: string;
+};
+
+type ConfirmAction = {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  variant?: "default" | "destructive";
+  onConfirm: () => void;
+};
+
+const systemRoleOptions = ["Owner", "Admin", "Editor", "Viewer"] as const;
+
+const permissionOptions = [
+  "short_links.read",
+  "short_links.create",
+  "short_links.update",
+  "short_links.activate",
+  "short_links.deactivate",
+  "short_links.delete",
+  "short_links.export",
+  "analytics.read",
+  "audit_logs.read",
+  "security.assignments.manage"
+] as const;
+
+export function SecurityAssignmentsPage() {
+  const adminPermissions = getAdminPermissionState();
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [assignments, setAssignments] = useState<SecurityAssignment[]>([]);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [editingHash, setEditingHash] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<SecurityAssignmentFieldErrors>({});
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
+  const [form, setForm] = useState({
+    name: "",
+    credentialKey: "",
+    roles: [] as string[],
+    permissions: [] as string[],
+    isEnabled: true
+  });
+
+  const resetForm = () => {
+    setEditingHash(null);
+    setForm({
+      name: "",
+      credentialKey: "",
+      roles: [],
+      permissions: [],
+      isEnabled: true
+    });
+    setFieldErrors({});
+  };
+
+  const loadAssignments = async () => {
+    if (!adminPermissions.canManageSecurityAssignments) {
+      return;
+    }
+
+    setIsLoading(true);
+    setErrorMessage(null);
+
+    try {
+      const result = await listSecurityAssignments();
+      setAssignments(result.items);
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setErrorMessage(toFriendlyErrorMessage(error.errorCode, error.message));
+      } else {
+        setErrorMessage("Security assignments could not be loaded.");
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadAssignments();
+  }, []);
+
+  const startEdit = (assignment: SecurityAssignment) => {
+    setEditingHash(assignment.credentialKeyHash);
+    setForm({
+      name: assignment.name,
+      credentialKey: "",
+      roles: assignment.roles,
+      permissions: assignment.permissions,
+      isEnabled: assignment.isEnabled
+    });
+    setFieldErrors({});
+  };
+
+  const toggleFormValue = (field: "roles" | "permissions", value: string) => {
+    setForm((current) => {
+      const values = new Set(current[field]);
+      if (values.has(value)) {
+        values.delete(value);
+      } else {
+        values.add(value);
+      }
+
+      return {
+        ...current,
+        [field]: Array.from(values)
+      };
+    });
+  };
+
+  const validateForm = () => {
+    const nextErrors: SecurityAssignmentFieldErrors = {};
+    if (!form.name.trim()) {
+      nextErrors.name = "Name this assignment.";
+    }
+
+    if (!form.credentialKey.trim()) {
+      nextErrors.credentialKey = "Enter the credential key to store its hash.";
+    }
+
+    return nextErrors;
+  };
+
+  const saveAssignment = async () => {
+    const nextErrors = validateForm();
+    if (nextErrors.name || nextErrors.credentialKey) {
+      setFieldErrors(nextErrors);
+      return;
+    }
+
+    setIsSaving(true);
+    setErrorMessage(null);
+    setFieldErrors({});
+
+    try {
+      const assignment = await upsertSecurityAssignment({
+        name: form.name.trim(),
+        credentialKey: form.credentialKey.trim(),
+        roles: form.roles,
+        permissions: form.permissions,
+        isEnabled: form.isEnabled
+      });
+
+      setAssignments((current) => {
+        const withoutCurrent = current.filter(
+          (item) => item.credentialKeyHash !== assignment.credentialKeyHash
+        );
+        return [...withoutCurrent, assignment].sort((left, right) =>
+          left.name.localeCompare(right.name)
+        );
+      });
+      resetForm();
+      showToast({
+        title: "Security assignment saved",
+        message: assignment.name,
+        variant: "success"
+      });
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setErrorMessage(toFriendlyErrorMessage(error.errorCode, error.message));
+      } else {
+        setErrorMessage("Security assignment could not be saved.");
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const disableAssignment = async (assignment: SecurityAssignment) => {
+    setErrorMessage(null);
+
+    try {
+      const disabled = await disableSecurityAssignment(assignment.credentialKeyHash);
+      setAssignments((current) =>
+        current.map((item) =>
+          item.credentialKeyHash === disabled.credentialKeyHash
+            ? { ...item, isEnabled: disabled.isEnabled }
+            : item
+        )
+      );
+      showToast({
+        title: "Security assignment disabled",
+        message: assignment.name,
+        variant: "success"
+      });
+      if (editingHash === assignment.credentialKeyHash) {
+        resetForm();
+      }
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setErrorMessage(toFriendlyErrorMessage(error.errorCode, error.message));
+      } else {
+        setErrorMessage("Security assignment could not be disabled.");
+      }
+    }
+  };
+
+  const requestDisable = (assignment: SecurityAssignment) => {
+    setConfirmAction({
+      title: "Disable security assignment?",
+      description: `Disable ${assignment.name}? Requests using this credential will be rejected.`,
+      confirmLabel: "Disable",
+      variant: "destructive",
+      onConfirm: () => void disableAssignment(assignment)
+    });
+  };
+
+  if (!adminPermissions.canManageSecurityAssignments) {
+    return (
+      <Card className="admin-panel">
+        <CardHeader className="panel-heading-wide">
+          <div className="card-title-row">
+            <span className="card-glyph" aria-hidden="true" />
+            <div>
+              <p className="eyebrow">Security</p>
+              <CardTitle>Manage assignments.</CardTitle>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <EmptyState
+            title="Security management is unavailable"
+            description="This admin credential does not include the security.assignments.manage permission."
+          />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="admin-panel">
+      <CardHeader className="panel-heading-wide">
+        <div className="card-title-row">
+          <span className="card-glyph" aria-hidden="true" />
+          <div>
+            <p className="eyebrow">Security</p>
+            <CardTitle>Manage user, role, and permission assignments.</CardTitle>
+          </div>
+        </div>
+        <Button variant="secondary" disabled={isLoading} onClick={() => void loadAssignments()}>
+          Refresh
+        </Button>
+      </CardHeader>
+
+      <CardContent>
+        {errorMessage ? (
+          <p className="feedback feedback-error">{errorMessage}</p>
+        ) : null}
+
+        <div className="security-dialog-grid">
+          <div className="security-assignment-form">
+            <div>
+              <p className="eyebrow">{editingHash ? "Update" : "Create"}</p>
+              <h3>{editingHash ? "Update assignment" : "New assignment"}</h3>
+              {editingHash ? (
+                <p className="muted-copy">Re-enter the credential key to update the stored hash.</p>
+              ) : null}
+            </div>
+
+            <Label className="field">
+              <span className="field-label">
+                Assignment name <span className="required-marker">*</span>
+              </span>
+              <Input
+                value={form.name}
+                aria-invalid={fieldErrors.name ? "true" : undefined}
+                onChange={(event) => {
+                  setForm((current) => ({
+                    ...current,
+                    name: event.target.value
+                  }));
+                  setFieldErrors((current) => ({
+                    ...current,
+                    name: undefined
+                  }));
+                }}
+              />
+              {fieldErrors.name ? (
+                <span className="field-error">{fieldErrors.name}</span>
+              ) : null}
+            </Label>
+
+            <Label className="field">
+              <span className="field-label">
+                Credential key <span className="required-marker">*</span>
+              </span>
+              <Input
+                type="password"
+                value={form.credentialKey}
+                aria-invalid={fieldErrors.credentialKey ? "true" : undefined}
+                placeholder={editingHash ? "Enter key again to update" : "New admin API key"}
+                onChange={(event) => {
+                  setForm((current) => ({
+                    ...current,
+                    credentialKey: event.target.value
+                  }));
+                  setFieldErrors((current) => ({
+                    ...current,
+                    credentialKey: undefined
+                  }));
+                }}
+              />
+              {fieldErrors.credentialKey ? (
+                <span className="field-error">{fieldErrors.credentialKey}</span>
+              ) : null}
+            </Label>
+
+            <fieldset className="security-choice-group">
+              <legend>System roles</legend>
+              {systemRoleOptions.map((role) => (
+                <label key={role} className="security-choice">
+                  <input
+                    type="checkbox"
+                    checked={form.roles.includes(role)}
+                    onChange={() => toggleFormValue("roles", role)}
+                  />
+                  <span>{role}</span>
+                </label>
+              ))}
+            </fieldset>
+
+            <fieldset className="security-choice-group security-permission-grid">
+              <legend>Explicit permissions</legend>
+              {permissionOptions.map((permission) => (
+                <label key={permission} className="security-choice">
+                  <input
+                    type="checkbox"
+                    checked={form.permissions.includes(permission)}
+                    onChange={() => toggleFormValue("permissions", permission)}
+                  />
+                  <span>{permission}</span>
+                </label>
+              ))}
+            </fieldset>
+
+            <label className="security-choice security-enabled-choice">
+              <input
+                type="checkbox"
+                checked={form.isEnabled}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    isEnabled: event.target.checked
+                  }))
+                }
+              />
+              <span>Enabled</span>
+            </label>
+
+            <div className="dialog-actions">
+              <Button variant="secondary" onClick={resetForm}>
+                Clear
+              </Button>
+              <Button disabled={isSaving} onClick={() => void saveAssignment()}>
+                {isSaving ? "Saving" : "Save assignment"}
+              </Button>
+            </div>
+          </div>
+
+          <div className="security-assignment-list">
+            <div className="security-list-header">
+              <div>
+                <p className="eyebrow">Assignments</p>
+                <h3>Persisted credentials</h3>
+              </div>
+            </div>
+
+            {isLoading ? (
+              <div className="analytics-loading">
+                <span className="skeleton skeleton-url" />
+                <span className="skeleton skeleton-url" />
+                <span className="skeleton skeleton-url" />
+              </div>
+            ) : null}
+
+            {!isLoading && assignments.length === 0 ? (
+              <EmptyState
+                title="No persisted assignments"
+                description="Create an assignment to manage a credential outside bootstrap configuration."
+              />
+            ) : null}
+
+            {!isLoading && assignments.length > 0 ? (
+              <div className="security-assignment-items">
+                {assignments.map((assignment) => (
+                  <div className="security-assignment-item" key={assignment.credentialKeyHash}>
+                    <div className="security-assignment-item-header">
+                      <div>
+                        <strong>{assignment.name}</strong>
+                        <code>{assignment.credentialKeyHash}</code>
+                      </div>
+                      <Badge variant={assignment.isEnabled ? "default" : "destructive"}>
+                        {assignment.isEnabled ? "Enabled" : "Disabled"}
+                      </Badge>
+                    </div>
+                    <dl>
+                      <div>
+                        <dt>Roles</dt>
+                        <dd>{assignment.roles.length > 0 ? assignment.roles.join(", ") : "None"}</dd>
+                      </div>
+                      <div>
+                        <dt>Permissions</dt>
+                        <dd>
+                          {assignment.permissions.length > 0
+                            ? assignment.permissions.join(", ")
+                            : "None"}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Created</dt>
+                        <dd>{formatDateTime(assignment.createdAtUtc)}</dd>
+                      </div>
+                    </dl>
+                    <div className="security-assignment-actions">
+                      <Button variant="secondary" onClick={() => startEdit(assignment)}>
+                        Edit
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        disabled={!assignment.isEnabled}
+                        onClick={() => requestDisable(assignment)}
+                      >
+                        Disable
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </CardContent>
+
+      <ConfirmDialog
+        open={confirmAction !== null}
+        title={confirmAction?.title ?? ""}
+        description={confirmAction?.description ?? ""}
+        confirmLabel={confirmAction?.confirmLabel ?? "Confirm"}
+        variant={confirmAction?.variant}
+        onConfirm={() => {
+          const action = confirmAction;
+          setConfirmAction(null);
+          action?.onConfirm();
+        }}
+        onCancel={() => setConfirmAction(null)}
+      />
+    </Card>
+  );
+}

@@ -109,15 +109,17 @@ Implemented:
 - Added frontend security assignment response/request types.
 - Added API client functions for listing, upserting, and disabling security assignments.
 - Added `canManageSecurityAssignments` to frontend permission state using `security.assignments.manage`.
-- Added a permission-aware Security action in the admin page header.
-- Added a security assignment management dialog with list, create/update form, built-in role checkboxes, explicit permission checkboxes, enabled toggle, refresh, edit, and disable actions.
+- Added a permission-aware Security sidebar route at `/security`.
+- Added a security assignment management page with list, create/update form, built-in role checkboxes, explicit permission checkboxes, enabled toggle, refresh, edit, and disable actions.
 - The assignment list shows name, credential hash, roles, explicit permissions, enabled state, and created timestamp without exposing raw API keys.
 - Raw credential keys are accepted only in the create/update form and are cleared after save.
 - Disable uses the existing confirmation dialog and updates local UI state.
 - Existing `fetchJson` behavior continues routing `401` and `403` responses to `/unauthorized` and `/forbidden`.
 - Kept existing short-link admin, analytics, copy, edit, activate/deactivate, delete, bulk, and pagination behavior intact.
+- Follow-up adjustment on 2026-07-16: moved security management out of the Admin URLs dialog/header action into its own sidebar item and standalone route/page.
 
 Verification:
 
 - `npm run build` passed in `src\ShortenLink.Web`.
+- `npm run build` passed again after the sidebar-route follow-up.
 - Backend verification was not rerun because this task only changed frontend files and consumed the already verified `013_001` backend contract.

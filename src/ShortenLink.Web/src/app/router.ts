@@ -9,6 +9,10 @@ export function parseRoute(pathname: string): AppRoute {
     return { kind: "admin" };
   }
 
+  if (pathname === "/security") {
+    return { kind: "security" };
+  }
+
   if (pathname === "/unauthorized") {
     return { kind: "status", statusCode: 401 };
   }

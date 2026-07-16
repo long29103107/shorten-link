@@ -152,6 +152,34 @@ public sealed class EfCoreShortenLinkSecurityAssignmentRepositoryTests
     }
 
     [Fact]
+    public async Task SchemaInitializer_CreatesSecurityAssignmentsTableWhenDatabaseAlreadyExists()
+    {
+        await using var database = await SqliteTestDatabase.CreateWithLegacySchemaAsync();
+        await using var context = database.CreateContext();
+        await context.Database.EnsureCreatedAsync();
+
+        await context.EnsureSecurityAssignmentsSchemaAsync();
+
+        var repository = new EfCoreShortenLinkSecurityAssignmentRepository(context);
+        var credentialHash = HashCredential("backfill-key");
+        await repository.AddOrUpdateAsync(new ShortenLinkSecurityAssignment(
+            credentialHash,
+            "Backfilled Owner",
+            new[] { "Owner" },
+            new[] { "security.assignments.manage" },
+            true,
+            new DateTimeOffset(2026, 7, 16, 16, 0, 0, TimeSpan.Zero)));
+
+        var stored = await repository.FindByCredentialKeyHashAsync(credentialHash);
+        var indexes = await database.GetIndexNamesAsync();
+
+        Assert.NotNull(stored);
+        Assert.Equal("Backfilled Owner", stored.Name);
+        Assert.Contains("IX_shorten_link_security_assignments_IsEnabled", indexes);
+        Assert.Contains("IX_shorten_link_security_assignments_CreatedAt", indexes);
+    }
+
+    [Fact]
     public void Model_WithPostgresProvider_KeepsExpectedIndexes()
     {
         var options = new DbContextOptionsBuilder<ShortLinkDbContext>()
@@ -198,6 +226,26 @@ public sealed class EfCoreShortenLinkSecurityAssignmentRepositoryTests
             await context.Database.EnsureCreatedAsync();
 
             return database;
+        }
+
+        public static async Task<SqliteTestDatabase> CreateWithLegacySchemaAsync()
+        {
+            var connection = new SqliteConnection("Data Source=:memory:");
+            await connection.OpenAsync();
+
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                CREATE TABLE short_links (
+                    Code TEXT NOT NULL PRIMARY KEY,
+                    OriginalUrl TEXT NOT NULL,
+                    CreatedAt TEXT NOT NULL,
+                    ExpiresAt TEXT NULL,
+                    IsActive INTEGER NOT NULL
+                );
+                """;
+            await command.ExecuteNonQueryAsync();
+
+            return new SqliteTestDatabase(connection);
         }
 
         public ShortLinkDbContext CreateContext()

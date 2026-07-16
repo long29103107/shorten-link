@@ -63,7 +63,7 @@ No active task. Phase 013 is complete.
 ## Completed Notes
 
 - `013_001` added the `security.assignments.manage` permission, protected backend APIs to list, upsert, and disable persisted security assignments without returning raw API keys, validation for built-in roles/known permissions, README documentation, and repository/API tests.
-- `013_002` added a permission-aware React admin security dialog for listing, creating/updating, and disabling persisted credential assignments without exposing raw API keys.
+- `013_002` added a permission-aware React Security sidebar route for listing, creating/updating, and disabling persisted credential assignments without exposing raw API keys.
 
 ## Next Task Proposal
 
