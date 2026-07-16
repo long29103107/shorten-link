@@ -1,6 +1,6 @@
 ---
 name: planned-task-implementer
-description: Review, activate, and implement one explicitly selected OKF phase task whose status is planned. Use when the user names a specific `.okf/phase/PPP/PPP_TTT-task.md` task and wants Codex to assess its readiness, clarify material problems as a technical adviser, then generate code and keep fixing verification failures until the required builds succeed.
+description: Review, activate, and implement one explicitly selected OKF phase task whose status is planned. Use when the user names a specific `PPP_TTT` task note in `.okf/phase/PPP/PHASE_SUMMARY.md` and wants Codex to assess its readiness, clarify material problems as a technical adviser, then generate code and keep fixing verification failures until the required builds succeed.
 ---
 
 # Planned Task Implementer
@@ -30,11 +30,11 @@ task.
 ### 1. Resolve the exact task
 
 1. Read `AGENT.md` and the repository skill and standards it routes to.
-2. Read `.okf/phase/<PPP>/PHASE_SUMMARY.md` before the named task file.
-3. Confirm that exactly one task was named and that its frontmatter status is
+2. Read `.okf/phase/<PPP>/PHASE_SUMMARY.md` before the named task note.
+3. Confirm that exactly one task was named and that the task index status is
    `planned`.
-4. Read the full task, its declared dependencies, directly relevant completed
-   tasks, and affected source files.
+4. Read the full task note, its declared dependencies, directly relevant completed
+   task notes, and affected source files.
 5. Inspect the current worktree before editing and preserve unrelated changes.
 
 If the target is missing or ambiguous, ask the user to identify the exact task.
@@ -96,7 +96,7 @@ Do not silently mark an incomplete dependency done.
    compatibility required by the task.
 4. Generate only artifacts required by the change, such as EF migrations,
    clients, schemas, or lockfiles. Use repository-native generators.
-5. Re-read the task after implementation and close any uncovered criterion.
+5. Re-read the task note after implementation and close any uncovered criterion.
 
 If implementation exposes a new material product or architecture decision,
 return to the readiness-review format and ask once. Continue independently for

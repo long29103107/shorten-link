@@ -24,11 +24,11 @@ Describe the meaningful product capability this phase must deliver.
 
 In:
 
-- 
+-
 
 Out:
 
-- 
+-
 
 ## Task Index
 
@@ -47,7 +47,46 @@ No phase tasks are complete yet.
 
 Propose the smallest step that advances the phase goal and builds on completed step foundations. Do not create it until explicitly requested.
 
+## Task Notes
+
+Historical and active task detail is compacted here so each phase stays in one markdown file.
+
+### PPP_TTT - Task Title
+
+#### Step Goal
+
+Describe the independently verifiable step.
+
+#### Scope
+
+In:
+
+-
+
+Out:
+
+-
+
+#### Acceptance Criteria
+
+-
+
+#### Foundation for Next Step
+
+Describe the durable capability or contract this step leaves behind.
+
+#### Affected Files
+
+-
+
+#### Verification
+
+-
+
+#### Done Notes
+
+Not started.
+
 ## Scan Rule
 
-Read this file before loading any task file in the phase. Keep creating steps inside this phase until all phase done criteria are verified.
-
+Read this file before working on any task note in the phase. Keep creating steps inside this phase until all phase done criteria are verified.

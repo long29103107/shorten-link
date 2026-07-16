@@ -18,8 +18,7 @@ Check whether a change satisfies the task without weakening the reusable library
 
 ## Required Reads
 
-1. The current task file
+1. The current task note in the phase summary
 2. `.okf/standards/architecture.md`
 3. `.okf/standards/api-design.md`
 4. `.okf/standards/testing.md`
-

@@ -19,6 +19,5 @@ Prove that completed work is usable through concrete commands or clearly report 
 
 ## Required Reads
 
-1. The current task file
+1. The current task note in the phase summary
 2. `.okf/standards/testing.md`
-

@@ -1,4 +1,6 @@
-# Task
+# Task Note
+
+Copy this section into `## Task Notes` inside the phase `PHASE_SUMMARY.md`.
 
 ## Step Goal
 
@@ -12,11 +14,11 @@ Describe one independently verifiable user-facing or developer-facing outcome in
 
 In:
 
-- 
+-
 
 Out:
 
-- 
+-
 
 ## Relevant Standards
 
@@ -28,11 +30,11 @@ Out:
 
 ## Affected Files
 
-- 
+-
 
 ## Acceptance Criteria
 
-- 
+-
 
 ## Foundation for Next Step
 
@@ -40,9 +42,9 @@ Describe the durable capability, contract, or user flow that the following step 
 
 ## Verification
 
-- 
+-
 
 ## Done Notes
 
-Not complete.
+Not started.
 

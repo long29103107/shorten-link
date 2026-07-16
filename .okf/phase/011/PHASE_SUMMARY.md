@@ -70,6 +70,388 @@ Out:
 
 Implement `011_004` if Phase 011 still needs durable role assignment. `011_004` should keep Owner, Admin, Editor, and Viewer as built-in system roles, persist assignments only, and keep permissions as the source of truth.
 
-## Scan Rule
+## Task Notes
 
-Read this file before loading any `011_*` task file. Keep implementation permission-based, with roles acting as permission bundles rather than hard-coded authorization logic.
+Historical and active task detail is compacted here so each phase stays in one markdown file.
+
+### 011_001 - Permission Catalog And Admin Authorization Foundation
+
+Source before compaction: `011_001-permission-catalog-and-admin-authorization-foundation.md`
+
+#### Step Goal
+
+Create the first reusable security slice for admin protection by defining a permission catalog, role-to-permission bundles, and a minimal authorization boundary that future admin endpoints and UI checks can reuse.
+
+This step should establish permission-based authorization, not pure role-based authorization.
+
+#### Dependency
+
+- Phase 010 added reusable `401`, `403`, and `404` status experiences that security flows can reuse.
+- Existing admin endpoints already support create, list, update, activate, deactivate, delete, and bulk-style UI operations.
+- `PRODUCT_VISION.md` identifies admin protection as a P0 product gap.
+
+#### Scope
+
+In:
+
+- Define short-link/admin permissions such as `short_links.read`, `short_links.create`, `short_links.update`, `short_links.activate`, `short_links.deactivate`, `short_links.delete`, `short_links.export`, `analytics.read`, and `audit_logs.read`.
+- Define default role bundles such as Owner, Admin, Editor, and Viewer.
+- Add an authorization evaluation service or policy layer that checks permissions, while roles remain only permission bundles.
+- Protect the smallest meaningful admin API surface needed to prove the boundary.
+- Return stable `401` or `403` outcomes that the frontend can route to Phase 010 status pages.
+- Add focused tests for permission mapping and protected endpoint behavior.
+- Document local/demo security behavior.
+
+Out:
+
+- OAuth/OIDC/JWT provider integration.
+- Database-backed users or role assignment UI.
+- Password login, account creation, invitations, or user lifecycle.
+- Multi-tenant isolation.
+- Large audit-log or analytics UI work.
+
+#### Relevant Standards
+
+- `.okf/standards/architecture.md`
+- `.okf/standards/coding-style.md`
+- `.okf/standards/api-design.md`
+- `.okf/standards/testing.md`
+- `PRODUCT_VISION.md`
+
+#### Affected Files
+
+Expected starting points:
+
+- `.okf/phase/011/PHASE_SUMMARY.md`
+- `.okf/phase/011/011_001-permission-catalog-and-admin-authorization-foundation.md`
+- `src\ShortenLink.AspNetCore\`
+- `src\ShortenLink.Api\`
+- `src\ShortenLink.Web\src\features\short-links\api\`
+- `src\ShortenLink.Web\src\app\`
+- `tests\ShortenLink.Api.Tests\`
+
+#### Acceptance Criteria
+
+- Permission constants or equivalent stable permission identifiers exist for admin short-link actions.
+- Default roles are expressed as bundles of permissions, not as hard-coded role checks in business logic.
+- At least one admin management endpoint requires an appropriate permission.
+- Missing credentials produce a stable `401` response.
+- Valid credentials without the required permission produce a stable `403` response.
+- Frontend API handling can navigate or surface `401` and `403` using the Phase 010 status pages.
+- Local development remains runnable with documented demo credentials or a documented security-disabled mode.
+- Tests cover permission bundle evaluation and endpoint `401`/`403` behavior.
+
+#### Foundation for Next Step
+
+This task should leave reusable permission identifiers, role bundles, and endpoint policy wiring that later tasks can apply across all admin endpoints and admin UI controls without redesigning authorization.
+
+#### Verification
+
+Run after implementation:
+
+```powershell
+dotnet build ShortenLink.slnx --verbosity minimal
+dotnet test ShortenLink.slnx --verbosity minimal
+```
+
+Run frontend verification if API handling or routing changes:
+
+```powershell
+cd .\src\ShortenLink.Web
+npm run build
+```
+
+#### Done Notes
+
+- Added `ShortenLinkPermissions` constants and `ShortenLinkRoles` permission bundles for Owner, Admin, Editor, and Viewer.
+- Added API-key based `IShortenLinkAuthorizationService` that evaluates permissions, with roles acting only as permission bundles.
+- Added `ShortenLink:Security` options with local-demo defaults and validation when security is enabled.
+- Protected `GET /api/short-links` with `short_links.read` when security is enabled.
+- Added stable JSON `401 unauthorized` and `403 forbidden` responses for missing or under-permissioned API keys.
+- Updated frontend fetch handling so `401` routes to `/unauthorized` and `403` routes to `/forbidden`.
+- Documented the local permission-based security model in README.
+- Verification:
+  - `npm run build` passed in `src/ShortenLink.Web`.
+  - `dotnet build ShortenLink.slnx --verbosity minimal` passed.
+  - `dotnet test tests\ShortenLink.Api.Tests\ShortenLink.Api.Tests.csproj --verbosity minimal` passed.
+  - `dotnet test ShortenLink.slnx --verbosity minimal` passed.
+
+### 011_002 - Apply Permissions To Admin Mutation Endpoints
+
+Source before compaction: `011_002-apply-permissions-to-admin-mutation-endpoints.md`
+
+#### Step Goal
+
+Apply the permission boundary from `011_001` across admin mutation endpoints so create, update, activate, deactivate, and delete require the matching permission when security is enabled.
+
+#### Dependency
+
+- `011_001` added permission constants, role bundles, API-key permission evaluation, and protected the admin list endpoint with `short_links.read`.
+
+#### Scope
+
+In:
+
+- Require `short_links.create` for `POST /api/short-links`.
+- Require `short_links.update` for `PUT /api/short-links/{code}`.
+- Require `short_links.activate` for `POST /api/short-links/{code}/activate`.
+- Require `short_links.deactivate` for `POST /api/short-links/{code}/deactivate`.
+- Require `short_links.delete` for `DELETE /api/short-links/{code}`.
+- Ensure authorization runs before mutation service behavior.
+- Add tests for `401` and `403` behavior across mutation endpoints.
+
+Out:
+
+- OAuth/OIDC/JWT provider integration.
+- Admin user management UI.
+- Hiding frontend buttons by permission.
+- Audit log persistence.
+
+#### Relevant Standards
+
+- `.okf/standards/architecture.md`
+- `.okf/standards/coding-style.md`
+- `.okf/standards/api-design.md`
+- `.okf/standards/testing.md`
+- `PRODUCT_VISION.md`
+
+#### Affected Files
+
+- `.okf/phase/011/PHASE_SUMMARY.md`
+- `.okf/phase/011/011_002-apply-permissions-to-admin-mutation-endpoints.md`
+- `src\ShortenLink.AspNetCore\ShortenLinkEndpointRouteBuilderExtensions.cs`
+- `tests\ShortenLink.Api.Tests\ShortLinkEndpointsTests.cs`
+
+#### Acceptance Criteria
+
+- Create requires `short_links.create` when security is enabled.
+- Update requires `short_links.update` when security is enabled.
+- Activate requires `short_links.activate` when security is enabled.
+- Deactivate requires `short_links.deactivate` when security is enabled.
+- Delete requires `short_links.delete` when security is enabled.
+- Missing credentials return stable `401 unauthorized` before mutation behavior.
+- Valid credentials without required permission return stable `403 forbidden` before mutation behavior.
+- Existing local behavior remains unchanged when security is disabled.
+- Tests cover protected mutation endpoint behavior.
+
+#### Foundation for Next Step
+
+This task should leave the backend admin endpoint surface consistently protected so later tasks can add permission-aware UI controls, audit logs, or stronger identity integration without redesigning endpoint authorization.
+
+#### Verification
+
+Run after implementation:
+
+```powershell
+dotnet build ShortenLink.slnx --verbosity minimal
+dotnet test ShortenLink.slnx --verbosity minimal
+```
+
+#### Done Notes
+
+- Applied `short_links.create` to `POST /api/short-links`.
+- Applied `short_links.update` to `PUT /api/short-links/{code}`.
+- Applied `short_links.activate` to `POST /api/short-links/{code}/activate`.
+- Applied `short_links.deactivate` to `POST /api/short-links/{code}/deactivate`.
+- Applied `short_links.delete` to `DELETE /api/short-links/{code}`.
+- Added endpoint tests proving missing credentials return `401 unauthorized` before mutation behavior.
+- Added endpoint tests proving valid credentials without mutation permissions return `403 forbidden` before mutation behavior.
+- Verification:
+  - `dotnet build ShortenLink.slnx --verbosity minimal` passed.
+  - `dotnet test tests\ShortenLink.Api.Tests\ShortenLink.Api.Tests.csproj --verbosity minimal` passed.
+  - `dotnet test ShortenLink.slnx --verbosity minimal` passed.
+
+### 011_003 - Admin UI Permission-Aware Credential Flow
+
+Source before compaction: `011_003-admin-ui-permission-aware-credential-flow.md`
+
+#### Step Goal
+
+Make the admin UI usable with the permission-based API-key boundary from `011_001` and `011_002`: configure/send a local admin API key, route `401` and `403` outcomes to the standalone status pages, and avoid presenting mutation controls when the current permission set cannot use them.
+
+This task should keep the demo local-friendly while making protected admin behavior intentional and visible.
+
+#### Dependency
+
+- `011_001` added permission constants, system-style role bundles, API-key permission evaluation, and frontend `401`/`403` routing.
+- `011_002` applied matching permissions to create, update, activate, deactivate, and delete endpoints.
+- Phase 010 added standalone `/unauthorized`, `/forbidden`, and `/not-found` status pages.
+
+#### Scope
+
+In:
+
+- Add a local/demo way for the frontend to send the configured admin API key, without hard-coding production secrets.
+- Ensure admin list failures for `401` and `403` navigate to `/unauthorized` and `/forbidden` cleanly without duplicate error toasts.
+- Add a small frontend permission model that mirrors backend permission names.
+- Hide or disable create, edit, activate, deactivate, and delete controls when the current frontend permission set lacks the matching permission.
+- Keep roles as permission bundles conceptually; do not implement custom role management.
+- Document the local frontend credential/permission behavior if needed.
+
+Out:
+
+- OAuth/OIDC/JWT provider integration.
+- Database-backed users, API keys, or role assignments.
+- Custom roles.
+- User management UI.
+- Audit log persistence.
+
+#### Relevant Standards
+
+- `.okf/standards/architecture.md`
+- `.okf/standards/coding-style.md`
+- `.okf/standards/api-design.md`
+- `.okf/standards/testing.md`
+- `PRODUCT_VISION.md`
+
+#### Affected Files
+
+Expected starting points:
+
+- `.okf/phase/011/PHASE_SUMMARY.md`
+- `.okf/phase/011/011_003-admin-ui-permission-aware-credential-flow.md`
+- `src\ShortenLink.Web\src\features\short-links\api\http.ts`
+- `src\ShortenLink.Web\src\features\short-links\api\shortLinksApi.ts`
+- `src\ShortenLink.Web\src\features\short-links\pages\ShortLinkAdminPage.tsx`
+- `src\ShortenLink.Web\src\features\short-links\types.ts`
+- `src\ShortenLink.Web\src\app\`
+- `README.md`
+
+#### Acceptance Criteria
+
+- Frontend API requests can include the configured local admin API key header.
+- Missing or invalid admin credentials for admin list routes navigate to `/unauthorized`.
+- Insufficient permissions navigate to `/forbidden`.
+- Create control is unavailable without `short_links.create`.
+- Edit/update control is unavailable without `short_links.update`.
+- Activate control is unavailable without `short_links.activate`.
+- Deactivate control is unavailable without `short_links.deactivate`.
+- Delete control is unavailable without `short_links.delete`.
+- Local development remains convenient with documented demo credentials or a documented disabled-security mode.
+- Frontend build passes.
+
+#### Foundation for Next Step
+
+This task should leave the browser-side admin permission experience aligned with the backend permission boundary so later tasks can add persisted system-role assignments or audit logs without redesigning admin UI authorization.
+
+#### Verification
+
+Run after implementation:
+
+```powershell
+cd .\src\ShortenLink.Web
+npm run build
+```
+
+Run backend verification if endpoint or config behavior changes:
+
+```powershell
+dotnet build ShortenLink.slnx --verbosity minimal
+dotnet test ShortenLink.slnx --verbosity minimal
+```
+
+#### Done Notes
+
+- Added Vite environment support for `VITE_SHORTENLINK_ADMIN_API_KEY`, `VITE_SHORTENLINK_ADMIN_API_KEY_HEADER`, `VITE_SHORTENLINK_ADMIN_ROLE`, and `VITE_SHORTENLINK_ADMIN_PERMISSIONS`.
+- API requests now include the configured admin API-key header when present.
+- Admin controls now use frontend permission bundles that mirror backend permission names and built-in system roles.
+- Create, edit, activate, deactivate, and delete actions are unavailable when the configured frontend permission set lacks the matching permission.
+- README documents local frontend credential setup and clarifies that backend authorization remains the source of enforcement.
+- Verified with `npm run build` in `src\ShortenLink.Web`.
+
+### 011_004 - Persist System Role Security Assignments
+
+Source before compaction: `011_004-persist-system-role-security-assignments.md`
+
+#### Step Goal
+
+Add a durable security-assignment foundation for the local/admin API-key model without introducing custom roles or full user management: keep roles as built-in system bundles, persist which credential receives which system role or explicit permission set, and keep backend permission evaluation as the single authorization source.
+
+This task should turn the current config-only security model into a small production-aware persistence boundary while preserving the demo-friendly setup.
+
+#### Dependency
+
+- `011_001` introduced permission constants, role bundles, config-backed API-key authorization, and protected admin list behavior.
+- `011_002` applied permissions to admin mutation endpoints.
+- `011_003` should make the admin UI credential-aware before this task persists role assignments.
+
+#### Scope
+
+In:
+
+- Model built-in system roles such as Owner, Admin, Editor, and Viewer as non-deletable role bundles.
+- Persist API-key or local credential assignments to system roles and/or explicit permissions.
+- Ensure authorization evaluation can resolve permissions from persisted assignments.
+- Keep config-backed demo credentials as a bootstrap or fallback path for local development.
+- Add migration/schema coverage if the existing persistence layer requires it.
+- Add tests for persisted assignment evaluation, unknown credentials, disabled credentials, and role-to-permission expansion.
+- Document how system roles differ from custom roles and why custom role management is intentionally out of scope.
+
+Out:
+
+- Custom role creation/editing/deletion.
+- User account lifecycle, invitations, password reset, or profile management.
+- OAuth/OIDC/JWT integration.
+- Admin UI for managing users or roles.
+- Multi-tenant organization security.
+
+#### Relevant Standards
+
+- `.okf/standards/architecture.md`
+- `.okf/standards/coding-style.md`
+- `.okf/standards/api-design.md`
+- `.okf/standards/testing.md`
+- `PRODUCT_VISION.md`
+
+#### Affected Files
+
+Expected starting points:
+
+- `.okf/phase/011/PHASE_SUMMARY.md`
+- `.okf/phase/011/011_004-persist-system-role-security-assignments.md`
+- `src\ShortenLink.AspNetCore\ShortenLinkAuthorizationService.cs`
+- `src\ShortenLink.AspNetCore\ShortenLinkPermissions.cs`
+- `src\ShortenLink.Infrastructure\`
+- `src\ShortenLink.Core\`
+- `src\ShortenLink.Api\appsettings.json`
+- `tests\ShortenLink.Api.Tests\`
+- `tests\ShortenLink.Infrastructure.Tests\`
+- `README.md`
+
+#### Acceptance Criteria
+
+- Built-in system roles are represented as stable role bundles and cannot be customized through this task.
+- Persisted security assignments can grant a credential one or more system roles.
+- Permission evaluation expands persisted system roles into effective permissions.
+- Missing, disabled, or unknown credentials are rejected consistently.
+- Local development can still use documented bootstrap/demo credentials.
+- Tests cover persisted role assignment success and failure paths.
+- Documentation explains that permissions are the source of truth and system roles are predefined bundles.
+
+#### Foundation for Next Step
+
+This task should leave a durable security-assignment boundary that can later support audit logs, admin settings UI, or external identity integration without rewriting permission evaluation.
+
+#### Verification
+
+Run after implementation:
+
+```powershell
+dotnet build ShortenLink.slnx --verbosity minimal
+dotnet test ShortenLink.slnx --verbosity minimal
+```
+
+Run frontend verification too if any admin credential UI changes are needed:
+
+```powershell
+cd .\src\ShortenLink.Web
+npm run build
+```
+
+#### Done Notes
+
+Not started.
+
+
+## Scan Rule
+Read this file before working on any `011_*` task note. Keep implementation permission-based, with roles acting as permission bundles rather than hard-coded authorization logic.
