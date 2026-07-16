@@ -7,8 +7,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using ShortenLink.Core;
 using ShortenLink.Core.Domain;
+using ShortenLink.Core.Repositories;
+using ShortenLink.Core.Security;
 using ShortenLink.Core.Services;
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace ShortenLink.AspNetCore;
@@ -31,6 +34,9 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
         shortLinks.MapGet("/{code}", GetShortLinkDetailsAsync)
             .WithName("GetShortLinkDetails");
 
+        shortLinks.MapGet("/{code}/analytics", GetShortLinkAnalyticsAsync)
+            .WithName("GetShortLinkAnalytics");
+
         shortLinks.MapPut("/{code}", UpdateShortLinkAsync)
             .WithName("UpdateShortLink");
 
@@ -45,6 +51,18 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
 
         var redirectEndpoint = endpoints.MapGet("/{code}", RedirectShortLinkAsync)
             .WithName("RedirectShortLink");
+
+        var securityAssignments = endpoints.MapGroup("/api/security/assignments")
+            .WithTags("Security Assignments");
+
+        securityAssignments.MapGet("/", ListSecurityAssignmentsAsync)
+            .WithName("ListSecurityAssignments");
+
+        securityAssignments.MapPut("/", UpsertSecurityAssignmentAsync)
+            .WithName("UpsertSecurityAssignment");
+
+        securityAssignments.MapPost("/{credentialKeyHash}/disable", DisableSecurityAssignmentAsync)
+            .WithName("DisableSecurityAssignment");
 
         var options = endpoints.ServiceProvider
             .GetRequiredService<IOptions<ShortenLinkOptions>>()
@@ -68,7 +86,9 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
         string? cursor,
         CancellationToken cancellationToken)
     {
-        var authorization = authorizationService.Authorize(httpContext, ShortenLinkPermissions.ShortLinksRead);
+        var authorization = await authorizationService
+            .AuthorizeAsync(httpContext, ShortenLinkPermissions.ShortLinksRead, cancellationToken)
+            .ConfigureAwait(false);
         if (!authorization.Succeeded)
         {
             return CreateAuthorizationErrorResponse(authorization);
@@ -132,7 +152,9 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var authorization = authorizationService.Authorize(httpContext, ShortenLinkPermissions.ShortLinksCreate);
+        var authorization = await authorizationService
+            .AuthorizeAsync(httpContext, ShortenLinkPermissions.ShortLinksCreate, cancellationToken)
+            .ConfigureAwait(false);
         if (!authorization.Succeeded)
         {
             return CreateAuthorizationErrorResponse(authorization);
@@ -168,6 +190,124 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
         return TypedResults.Ok(ShortLinkDetailsResponse.FromDomain(result.ShortLink));
     }
 
+    private static async Task<Results<Ok<ShortLinkAnalyticsResponse>, JsonHttpResult<ShortLinkErrorResponse>>> GetShortLinkAnalyticsAsync(
+        string code,
+        IShortLinkService shortLinkService,
+        IShortLinkClickRepository clickRepository,
+        IShortenLinkAuthorizationService authorizationService,
+        HttpContext httpContext,
+        int? limit,
+        CancellationToken cancellationToken)
+    {
+        var authorization = await authorizationService
+            .AuthorizeAsync(httpContext, ShortenLinkPermissions.AnalyticsRead, cancellationToken)
+            .ConfigureAwait(false);
+        if (!authorization.Succeeded)
+        {
+            return CreateAuthorizationErrorResponse(authorization);
+        }
+
+        var details = await shortLinkService.GetDetailsAsync(code, cancellationToken).ConfigureAwait(false);
+        if (!details.Succeeded || details.ShortLink is null)
+        {
+            return CreateErrorResponse(details.ErrorCode, details.ErrorMessage);
+        }
+
+        var safeLimit = Math.Clamp(limit ?? 20, 1, 100);
+        var summary = await clickRepository.GetSummaryAsync(code, cancellationToken).ConfigureAwait(false);
+        var recentClicks = await clickRepository.ListRecentAsync(code, safeLimit, cancellationToken).ConfigureAwait(false);
+
+        return TypedResults.Ok(ShortLinkAnalyticsResponse.FromClicks(
+            code,
+            summary,
+            recentClicks));
+    }
+
+    private static async Task<Results<Ok<SecurityAssignmentsListResponse>, JsonHttpResult<ShortLinkErrorResponse>>> ListSecurityAssignmentsAsync(
+        IShortenLinkSecurityAssignmentRepository assignmentRepository,
+        IShortenLinkAuthorizationService authorizationService,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var authorization = await authorizationService
+            .AuthorizeAsync(httpContext, ShortenLinkPermissions.SecurityAssignmentsManage, cancellationToken)
+            .ConfigureAwait(false);
+        if (!authorization.Succeeded)
+        {
+            return CreateAuthorizationErrorResponse(authorization);
+        }
+
+        var assignments = await assignmentRepository.ListAsync(cancellationToken).ConfigureAwait(false);
+        return TypedResults.Ok(new SecurityAssignmentsListResponse(
+            assignments.Select(SecurityAssignmentResponse.FromDomain).ToList()));
+    }
+
+    private static async Task<Results<Ok<SecurityAssignmentResponse>, JsonHttpResult<ShortLinkErrorResponse>>> UpsertSecurityAssignmentAsync(
+        SecurityAssignmentUpsertRequest request,
+        IShortenLinkSecurityAssignmentRepository assignmentRepository,
+        IShortenLinkAuthorizationService authorizationService,
+        TimeProvider timeProvider,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var authorization = await authorizationService
+            .AuthorizeAsync(httpContext, ShortenLinkPermissions.SecurityAssignmentsManage, cancellationToken)
+            .ConfigureAwait(false);
+        if (!authorization.Succeeded)
+        {
+            return CreateAuthorizationErrorResponse(authorization);
+        }
+
+        var validation = ValidateSecurityAssignmentRequest(request);
+        if (validation is not null)
+        {
+            return validation;
+        }
+
+        var assignment = new ShortenLinkSecurityAssignment(
+            HashCredential(request.CredentialKey),
+            request.Name?.Trim() ?? string.Empty,
+            NormalizeDistinct(request.Roles),
+            NormalizeDistinct(request.Permissions),
+            request.IsEnabled ?? true,
+            timeProvider.GetUtcNow());
+
+        await assignmentRepository.AddOrUpdateAsync(assignment, cancellationToken).ConfigureAwait(false);
+
+        return TypedResults.Ok(SecurityAssignmentResponse.FromDomain(assignment));
+    }
+
+    private static async Task<Results<Ok<SecurityAssignmentDisabledResponse>, JsonHttpResult<ShortLinkErrorResponse>>> DisableSecurityAssignmentAsync(
+        string credentialKeyHash,
+        IShortenLinkSecurityAssignmentRepository assignmentRepository,
+        IShortenLinkAuthorizationService authorizationService,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var authorization = await authorizationService
+            .AuthorizeAsync(httpContext, ShortenLinkPermissions.SecurityAssignmentsManage, cancellationToken)
+            .ConfigureAwait(false);
+        if (!authorization.Succeeded)
+        {
+            return CreateAuthorizationErrorResponse(authorization);
+        }
+
+        if (!IsValidCredentialHash(credentialKeyHash))
+        {
+            return CreateErrorResponse("invalid_credential_hash", "Credential key hash is invalid.");
+        }
+
+        var disabled = await assignmentRepository.DisableAsync(credentialKeyHash, cancellationToken).ConfigureAwait(false);
+        if (!disabled)
+        {
+            return CreateErrorResponse(ShortLinkErrorCodes.NotFound, "Security assignment was not found.");
+        }
+
+        return TypedResults.Ok(new SecurityAssignmentDisabledResponse(credentialKeyHash, false));
+    }
+
     private static async Task<Results<Ok<ShortLinkAdminListItemResponse>, JsonHttpResult<ShortLinkErrorResponse>>> UpdateShortLinkAsync(
         string code,
         ShortLinkUpdateRequest request,
@@ -179,7 +319,9 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var authorization = authorizationService.Authorize(httpContext, ShortenLinkPermissions.ShortLinksUpdate);
+        var authorization = await authorizationService
+            .AuthorizeAsync(httpContext, ShortenLinkPermissions.ShortLinksUpdate, cancellationToken)
+            .ConfigureAwait(false);
         if (!authorization.Succeeded)
         {
             return CreateAuthorizationErrorResponse(authorization);
@@ -206,7 +348,9 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
-        var authorization = authorizationService.Authorize(httpContext, ShortenLinkPermissions.ShortLinksDeactivate);
+        var authorization = await authorizationService
+            .AuthorizeAsync(httpContext, ShortenLinkPermissions.ShortLinksDeactivate, cancellationToken)
+            .ConfigureAwait(false);
         if (!authorization.Succeeded)
         {
             return CreateAuthorizationErrorResponse(authorization);
@@ -228,7 +372,9 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
-        var authorization = authorizationService.Authorize(httpContext, ShortenLinkPermissions.ShortLinksActivate);
+        var authorization = await authorizationService
+            .AuthorizeAsync(httpContext, ShortenLinkPermissions.ShortLinksActivate, cancellationToken)
+            .ConfigureAwait(false);
         if (!authorization.Succeeded)
         {
             return CreateAuthorizationErrorResponse(authorization);
@@ -250,7 +396,9 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
-        var authorization = authorizationService.Authorize(httpContext, ShortenLinkPermissions.ShortLinksDelete);
+        var authorization = await authorizationService
+            .AuthorizeAsync(httpContext, ShortenLinkPermissions.ShortLinksDelete, cancellationToken)
+            .ConfigureAwait(false);
         if (!authorization.Succeeded)
         {
             return CreateAuthorizationErrorResponse(authorization);
@@ -332,7 +480,11 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
             ShortLinkErrorCodes.InvalidExpiration => StatusCodes.Status400BadRequest,
             ShortLinkErrorCodes.InvalidUrl => StatusCodes.Status400BadRequest,
             ShortLinkErrorCodes.NotFound => StatusCodes.Status404NotFound,
+            "invalid_credential_hash" => StatusCodes.Status400BadRequest,
             "invalid_cursor" => StatusCodes.Status400BadRequest,
+            "invalid_permission" => StatusCodes.Status400BadRequest,
+            "invalid_role" => StatusCodes.Status400BadRequest,
+            "invalid_security_assignment" => StatusCodes.Status400BadRequest,
             ShortLinkErrorCodes.Expired => StatusCodes.Status410Gone,
             ShortLinkErrorCodes.Inactive => StatusCodes.Status410Gone,
             _ => StatusCodes.Status500InternalServerError
@@ -400,6 +552,58 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
     private static string NormalizeFallbackPath(string? fallbackPath) =>
         string.IsNullOrWhiteSpace(fallbackPath) ? "/not-found" : fallbackPath;
 
+    private static JsonHttpResult<ShortLinkErrorResponse>? ValidateSecurityAssignmentRequest(
+        SecurityAssignmentUpsertRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.CredentialKey))
+        {
+            return CreateErrorResponse("invalid_security_assignment", "Credential key is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Name))
+        {
+            return CreateErrorResponse("invalid_security_assignment", "Assignment name is required.");
+        }
+
+        foreach (var role in NormalizeDistinct(request.Roles))
+        {
+            if (!ShortenLinkRoles.PermissionBundles.ContainsKey(role))
+            {
+                return CreateErrorResponse("invalid_role", $"Unknown system role '{role}'.");
+            }
+        }
+
+        foreach (var permission in NormalizeDistinct(request.Permissions))
+        {
+            if (!ShortenLinkPermissions.All.Contains(permission))
+            {
+                return CreateErrorResponse("invalid_permission", $"Unknown permission '{permission}'.");
+            }
+        }
+
+        return null;
+    }
+
+    private static IReadOnlyList<string> NormalizeDistinct(IEnumerable<string>? values) =>
+        (values ?? Array.Empty<string>())
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Select(static value => value.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+    private static string HashCredential(string apiKey)
+    {
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(apiKey));
+        return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    private static bool IsValidCredentialHash(string credentialKeyHash) =>
+        credentialKeyHash.Length == 64
+        && credentialKeyHash.All(static c =>
+            c is >= '0' and <= '9'
+            || c is >= 'a' and <= 'f'
+            || c is >= 'A' and <= 'F');
+
     public sealed record ShortLinkCreateRequest(
         string OriginalUrl,
         DateTimeOffset? ExpiredAtUtc);
@@ -459,6 +663,69 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
                 shortLink.ExpiresAt,
                 shortLink.IsActive);
     }
+
+    public sealed record ShortLinkAnalyticsResponse(
+        string Code,
+        long ClickCount,
+        DateTimeOffset? LastClickedAtUtc,
+        IReadOnlyList<ShortLinkClickActivityResponse> RecentClicks)
+    {
+        public static ShortLinkAnalyticsResponse FromClicks(
+            string code,
+            ShortLinkClickSummary summary,
+            IReadOnlyList<ShortLinkClick> recentClicks) =>
+            new(
+                code,
+                summary.ClickCount,
+                summary.LastClickedAtUtc,
+                recentClicks.Select(ShortLinkClickActivityResponse.FromDomain).ToList());
+    }
+
+    public sealed record ShortLinkClickActivityResponse(
+        DateTimeOffset ClickedAtUtc,
+        string? RemoteIpAddress,
+        string? UserAgent,
+        string? Referrer)
+    {
+        public static ShortLinkClickActivityResponse FromDomain(ShortLinkClick click) =>
+            new(
+                click.ClickedAtUtc,
+                click.RemoteIpAddress,
+                click.UserAgent,
+                click.Referrer);
+    }
+
+    public sealed record SecurityAssignmentUpsertRequest(
+        string Name,
+        string CredentialKey,
+        IReadOnlyList<string>? Roles,
+        IReadOnlyList<string>? Permissions,
+        bool? IsEnabled);
+
+    public sealed record SecurityAssignmentsListResponse(
+        IReadOnlyList<SecurityAssignmentResponse> Items);
+
+    public sealed record SecurityAssignmentResponse(
+        string CredentialKeyHash,
+        string Name,
+        IReadOnlyList<string> Roles,
+        IReadOnlyList<string> Permissions,
+        bool IsEnabled,
+        DateTimeOffset CreatedAtUtc)
+    {
+        public static SecurityAssignmentResponse FromDomain(ShortenLinkSecurityAssignment assignment) =>
+            new(
+                assignment.CredentialKeyHash,
+                assignment.Name,
+                assignment.Roles,
+                assignment.Permissions,
+                assignment.IsEnabled,
+                assignment.CreatedAt);
+    }
+
+    public sealed record SecurityAssignmentDisabledResponse(
+        string CredentialKeyHash,
+        bool IsEnabled);
 
     public sealed record ShortLinkDeactivatedResponse(string Code, bool IsActive);
 

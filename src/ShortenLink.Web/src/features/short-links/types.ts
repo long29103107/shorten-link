@@ -54,6 +54,20 @@ export type ShortLinkAdminPageResult = {
   totalPages: number | null;
 };
 
+export type ShortLinkAnalytics = {
+  code: string;
+  clickCount: number;
+  lastClickedAtUtc: string | null;
+  recentClicks: ShortLinkClickActivity[];
+};
+
+export type ShortLinkClickActivity = {
+  clickedAtUtc: string;
+  remoteIpAddress: string | null;
+  userAgent: string | null;
+  referrer: string | null;
+};
+
 export type DeactivatedShortLink = {
   code: string;
   isActive: boolean;
@@ -61,6 +75,32 @@ export type DeactivatedShortLink = {
 
 export type DeletedShortLink = {
   code: string;
+};
+
+export type SecurityAssignment = {
+  credentialKeyHash: string;
+  name: string;
+  roles: string[];
+  permissions: string[];
+  isEnabled: boolean;
+  createdAtUtc: string;
+};
+
+export type SecurityAssignmentsList = {
+  items: SecurityAssignment[];
+};
+
+export type SecurityAssignmentUpsertRequest = {
+  name: string;
+  credentialKey: string;
+  roles: string[];
+  permissions: string[];
+  isEnabled: boolean;
+};
+
+export type SecurityAssignmentDisabled = {
+  credentialKeyHash: string;
+  isEnabled: boolean;
 };
 
 export type ApiErrorPayload = {
@@ -96,6 +136,14 @@ export function toFriendlyErrorMessage(errorCode: string, fallbackMessage: strin
       return "This link has expired.";
     case "not_found":
       return "We could not find that short link.";
+    case "invalid_role":
+      return "Choose only built-in system roles.";
+    case "invalid_permission":
+      return "Choose only supported permissions.";
+    case "invalid_security_assignment":
+      return "Complete the security assignment fields.";
+    case "invalid_credential_hash":
+      return "The selected credential hash is invalid.";
     default:
       return fallbackMessage;
   }

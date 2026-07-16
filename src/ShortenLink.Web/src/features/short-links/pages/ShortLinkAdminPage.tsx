@@ -5,11 +5,15 @@ import {
   createShortLink,
   deactivateShortLink,
   deleteShortLink,
+  disableSecurityAssignment,
+  getShortLinkAnalytics,
+  listSecurityAssignments,
   listShortLinks,
+  upsertSecurityAssignment,
   updateShortLink
 } from "../api/shortLinksApi";
 import { getAdminPermissionState } from "../api/adminSecurity";
-import type { ShortLinkAdminItem } from "../types";
+import type { SecurityAssignment, ShortLinkAdminItem, ShortLinkAnalytics } from "../types";
 import { formatDateTime, toFriendlyErrorMessage } from "../types";
 import { Badge } from "../../../shared/components/ui/badge";
 import { Button } from "../../../shared/components/ui/button";
@@ -54,6 +58,26 @@ type EditorFieldErrors = {
   expiredAtLocal?: string;
 };
 
+type SecurityAssignmentFieldErrors = {
+  name?: string;
+  credentialKey?: string;
+};
+
+const systemRoleOptions = ["Owner", "Admin", "Editor", "Viewer"] as const;
+
+const permissionOptions = [
+  "short_links.read",
+  "short_links.create",
+  "short_links.update",
+  "short_links.activate",
+  "short_links.deactivate",
+  "short_links.delete",
+  "short_links.export",
+  "analytics.read",
+  "audit_logs.read",
+  "security.assignments.manage"
+] as const;
+
 export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
   const [links, setLinks] = useState<ShortLinkAdminItem[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -76,6 +100,24 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [isPageSizeMenuOpen, setIsPageSizeMenuOpen] = useState(false);
+  const [analyticsCode, setAnalyticsCode] = useState<string | null>(null);
+  const [analyticsData, setAnalyticsData] = useState<ShortLinkAnalytics | null>(null);
+  const [analyticsError, setAnalyticsError] = useState<string | null>(null);
+  const [isAnalyticsLoading, setIsAnalyticsLoading] = useState(false);
+  const [isSecurityDialogOpen, setIsSecurityDialogOpen] = useState(false);
+  const [isSecurityLoading, setIsSecurityLoading] = useState(false);
+  const [isSecuritySaving, setIsSecuritySaving] = useState(false);
+  const [securityAssignments, setSecurityAssignments] = useState<SecurityAssignment[]>([]);
+  const [securityError, setSecurityError] = useState<string | null>(null);
+  const [editingSecurityHash, setEditingSecurityHash] = useState<string | null>(null);
+  const [securityForm, setSecurityForm] = useState({
+    name: "",
+    credentialKey: "",
+    roles: [] as string[],
+    permissions: [] as string[],
+    isEnabled: true
+  });
+  const [securityFieldErrors, setSecurityFieldErrors] = useState<SecurityAssignmentFieldErrors>({});
   const copyFeedbackTimeoutRef = useRef<number | null>(null);
   const pageSizeMenuRef = useRef<HTMLLabelElement | null>(null);
   const adminPermissions = getAdminPermissionState();
@@ -431,6 +473,9 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
       if (editingCode === response.code) {
         setEditingCode(null);
       }
+      if (analyticsCode === response.code) {
+        closeAnalyticsPanel();
+      }
       showToast({
         title: "Short link deleted",
         message: response.code,
@@ -558,6 +603,38 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
     });
   };
 
+  const openAnalyticsPanel = async (link: ShortLinkAdminItem) => {
+    if (!adminPermissions.canReadAnalytics) {
+      return;
+    }
+
+    setAnalyticsCode(link.code);
+    setAnalyticsData(null);
+    setAnalyticsError(null);
+    setIsAnalyticsLoading(true);
+    setOpenMenuCode(null);
+
+    try {
+      const analytics = await getShortLinkAnalytics(link.code);
+      setAnalyticsData(analytics);
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setAnalyticsError(toFriendlyErrorMessage(error.errorCode, error.message));
+      } else {
+        setAnalyticsError("Analytics could not be loaded.");
+      }
+    } finally {
+      setIsAnalyticsLoading(false);
+    }
+  };
+
+  const closeAnalyticsPanel = () => {
+    setAnalyticsCode(null);
+    setAnalyticsData(null);
+    setAnalyticsError(null);
+    setIsAnalyticsLoading(false);
+  };
+
   const requestBulkDelete = () => {
     if (!adminPermissions.canDelete) {
       return;
@@ -619,8 +696,181 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
     void loadLinks(Math.max(1, Math.min(nextPageNumber, totalPages)));
   };
 
+  const resetSecurityForm = () => {
+    setEditingSecurityHash(null);
+    setSecurityForm({
+      name: "",
+      credentialKey: "",
+      roles: [],
+      permissions: [],
+      isEnabled: true
+    });
+    setSecurityFieldErrors({});
+  };
+
+  const loadSecurityAssignments = async () => {
+    setIsSecurityLoading(true);
+    setSecurityError(null);
+
+    try {
+      const result = await listSecurityAssignments();
+      setSecurityAssignments(result.items);
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setSecurityError(toFriendlyErrorMessage(error.errorCode, error.message));
+      } else {
+        setSecurityError("Security assignments could not be loaded.");
+      }
+    } finally {
+      setIsSecurityLoading(false);
+    }
+  };
+
+  const openSecurityDialog = async () => {
+    if (!adminPermissions.canManageSecurityAssignments) {
+      return;
+    }
+
+    setIsSecurityDialogOpen(true);
+    resetSecurityForm();
+    await loadSecurityAssignments();
+  };
+
+  const closeSecurityDialog = () => {
+    setIsSecurityDialogOpen(false);
+    setSecurityError(null);
+    setSecurityAssignments([]);
+    resetSecurityForm();
+  };
+
+  const startSecurityEdit = (assignment: SecurityAssignment) => {
+    setEditingSecurityHash(assignment.credentialKeyHash);
+    setSecurityForm({
+      name: assignment.name,
+      credentialKey: "",
+      roles: assignment.roles,
+      permissions: assignment.permissions,
+      isEnabled: assignment.isEnabled
+    });
+    setSecurityFieldErrors({});
+  };
+
+  const toggleSecurityFormValue = (field: "roles" | "permissions", value: string) => {
+    setSecurityForm((current) => {
+      const values = new Set(current[field]);
+      if (values.has(value)) {
+        values.delete(value);
+      } else {
+        values.add(value);
+      }
+
+      return {
+        ...current,
+        [field]: Array.from(values)
+      };
+    });
+  };
+
+  const validateSecurityForm = () => {
+    const nextErrors: SecurityAssignmentFieldErrors = {};
+    if (!securityForm.name.trim()) {
+      nextErrors.name = "Name this assignment.";
+    }
+
+    if (!securityForm.credentialKey.trim()) {
+      nextErrors.credentialKey = "Enter the credential key to store its hash.";
+    }
+
+    return nextErrors;
+  };
+
+  const saveSecurityAssignment = async () => {
+    const nextErrors = validateSecurityForm();
+    if (nextErrors.name || nextErrors.credentialKey) {
+      setSecurityFieldErrors(nextErrors);
+      return;
+    }
+
+    setIsSecuritySaving(true);
+    setSecurityError(null);
+    setSecurityFieldErrors({});
+
+    try {
+      const assignment = await upsertSecurityAssignment({
+        name: securityForm.name.trim(),
+        credentialKey: securityForm.credentialKey.trim(),
+        roles: securityForm.roles,
+        permissions: securityForm.permissions,
+        isEnabled: securityForm.isEnabled
+      });
+
+      setSecurityAssignments((current) => {
+        const withoutCurrent = current.filter(
+          (item) => item.credentialKeyHash !== assignment.credentialKeyHash
+        );
+        return [...withoutCurrent, assignment].sort((left, right) =>
+          left.name.localeCompare(right.name)
+        );
+      });
+      resetSecurityForm();
+      showToast({
+        title: "Security assignment saved",
+        message: assignment.name,
+        variant: "success"
+      });
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setSecurityError(toFriendlyErrorMessage(error.errorCode, error.message));
+      } else {
+        setSecurityError("Security assignment could not be saved.");
+      }
+    } finally {
+      setIsSecuritySaving(false);
+    }
+  };
+
+  const handleDisableSecurityAssignment = async (assignment: SecurityAssignment) => {
+    setSecurityError(null);
+
+    try {
+      const disabled = await disableSecurityAssignment(assignment.credentialKeyHash);
+      setSecurityAssignments((current) =>
+        current.map((item) =>
+          item.credentialKeyHash === disabled.credentialKeyHash
+            ? { ...item, isEnabled: disabled.isEnabled }
+            : item
+        )
+      );
+      showToast({
+        title: "Security assignment disabled",
+        message: assignment.name,
+        variant: "success"
+      });
+      if (editingSecurityHash === assignment.credentialKeyHash) {
+        resetSecurityForm();
+      }
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setSecurityError(toFriendlyErrorMessage(error.errorCode, error.message));
+      } else {
+        setSecurityError("Security assignment could not be disabled.");
+      }
+    }
+  };
+
+  const requestDisableSecurityAssignment = (assignment: SecurityAssignment) => {
+    setConfirmAction({
+      title: "Disable security assignment?",
+      description: `Disable ${assignment.name}? Requests using this credential will be rejected.`,
+      confirmLabel: "Disable",
+      variant: "destructive",
+      onConfirm: () => void handleDisableSecurityAssignment(assignment)
+    });
+  };
+
   const hasRowActions = (link: ShortLinkAdminItem) =>
-    adminPermissions.canUpdate
+    adminPermissions.canReadAnalytics
+    || adminPermissions.canUpdate
     || (link.isActive ? adminPermissions.canDeactivate : adminPermissions.canActivate)
     || adminPermissions.canDelete;
 
@@ -634,13 +884,20 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
           <CardTitle>Manage generated short links.</CardTitle>
           </div>
         </div>
-        <Button
-          disabled={!adminPermissions.canCreate}
-          title={adminPermissions.canCreate ? "Create" : "Missing short_links.create permission"}
-          onClick={startCreate}
-        >
-          Create
-        </Button>
+        <div className="admin-header-actions">
+          {adminPermissions.canManageSecurityAssignments ? (
+          <Button variant="secondary" onClick={() => void openSecurityDialog()}>
+            Security
+          </Button>
+          ) : null}
+          <Button
+            disabled={!adminPermissions.canCreate}
+            title={adminPermissions.canCreate ? "Create" : "Missing short_links.create permission"}
+            onClick={startCreate}
+          >
+            Create
+          </Button>
+        </div>
       </CardHeader>
 
       <CardContent>
@@ -803,6 +1060,11 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
                         </DropdownMenuTrigger>
                         {openMenuCode === link.code ? (
                           <DropdownMenuContent>
+                            {adminPermissions.canReadAnalytics ? (
+                            <DropdownMenuItem onClick={() => void openAnalyticsPanel(link)}>
+                              Analytics
+                            </DropdownMenuItem>
+                            ) : null}
                             {adminPermissions.canUpdate ? (
                             <DropdownMenuItem onClick={() => startEdit(link)}>
                               Edit
@@ -1027,6 +1289,290 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
                     ? "Create"
                     : "Save"}
               </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {analyticsCode ? (
+        <div className="dialog-backdrop" role="presentation">
+          <div
+            className="analytics-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="analytics-dialog-title"
+          >
+            <div className="analytics-dialog-header">
+              <div>
+                <p className="eyebrow">Analytics</p>
+                <h2 id="analytics-dialog-title">{analyticsCode}</h2>
+              </div>
+              <Button variant="secondary" onClick={closeAnalyticsPanel}>
+                Close
+              </Button>
+            </div>
+
+            {isAnalyticsLoading ? (
+              <div className="analytics-loading">
+                <span className="skeleton skeleton-button" />
+                <span className="skeleton skeleton-url" />
+                <span className="skeleton skeleton-url" />
+              </div>
+            ) : null}
+
+            {!isAnalyticsLoading && analyticsError ? (
+              <EmptyState
+                title="Analytics unavailable"
+                description={analyticsError}
+              />
+            ) : null}
+
+            {!isAnalyticsLoading && !analyticsError && analyticsData ? (
+              <div className="analytics-panel">
+                <div className="analytics-metrics">
+                  <div>
+                    <span>Clicks</span>
+                    <strong>{analyticsData.clickCount}</strong>
+                  </div>
+                  <div>
+                    <span>Last clicked</span>
+                    <strong>{analyticsData.lastClickedAtUtc ? formatDateTime(analyticsData.lastClickedAtUtc) : "No clicks yet"}</strong>
+                  </div>
+                </div>
+
+                {analyticsData.recentClicks.length === 0 ? (
+                  <EmptyState
+                    title="No clicks yet"
+                    description="Redirect analytics will appear here after visitors use this short link."
+                  />
+                ) : (
+                  <div className="analytics-activity-list">
+                    {analyticsData.recentClicks.map((click, index) => (
+                      <div className="analytics-activity-item" key={`${click.clickedAtUtc}-${index}`}>
+                        <div>
+                          <span className="activity-time">{formatDateTime(click.clickedAtUtc)}</span>
+                          <strong>{click.userAgent || "Unknown user agent"}</strong>
+                        </div>
+                        <dl>
+                          <div>
+                            <dt>Referrer</dt>
+                            <dd>{click.referrer || "Direct or unavailable"}</dd>
+                          </div>
+                          <div>
+                            <dt>Remote IP</dt>
+                            <dd>{click.remoteIpAddress || "Unavailable"}</dd>
+                          </div>
+                        </dl>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+      {isSecurityDialogOpen ? (
+        <div className="dialog-backdrop" role="presentation">
+          <div
+            className="security-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="security-dialog-title"
+          >
+            <div className="security-dialog-header">
+              <div>
+                <p className="eyebrow">Security</p>
+                <h2 id="security-dialog-title">Manage assignments</h2>
+              </div>
+              <Button variant="secondary" onClick={closeSecurityDialog}>
+                Close
+              </Button>
+            </div>
+
+            {securityError ? (
+              <p className="feedback feedback-error">{securityError}</p>
+            ) : null}
+
+            <div className="security-dialog-grid">
+              <div className="security-assignment-form">
+                <div>
+                  <p className="eyebrow">{editingSecurityHash ? "Update" : "Create"}</p>
+                  <h3>{editingSecurityHash ? "Update assignment" : "New assignment"}</h3>
+                  {editingSecurityHash ? (
+                    <p className="muted-copy">Re-enter the credential key to update the stored hash.</p>
+                  ) : null}
+                </div>
+
+                <Label className="field">
+                  <span className="field-label">
+                    Assignment name <span className="required-marker">*</span>
+                  </span>
+                  <Input
+                    value={securityForm.name}
+                    aria-invalid={securityFieldErrors.name ? "true" : undefined}
+                    onChange={(event) => {
+                      setSecurityForm((current) => ({
+                        ...current,
+                        name: event.target.value
+                      }));
+                      setSecurityFieldErrors((current) => ({
+                        ...current,
+                        name: undefined
+                      }));
+                    }}
+                  />
+                  {securityFieldErrors.name ? (
+                    <span className="field-error">{securityFieldErrors.name}</span>
+                  ) : null}
+                </Label>
+
+                <Label className="field">
+                  <span className="field-label">
+                    Credential key <span className="required-marker">*</span>
+                  </span>
+                  <Input
+                    type="password"
+                    value={securityForm.credentialKey}
+                    aria-invalid={securityFieldErrors.credentialKey ? "true" : undefined}
+                    placeholder={editingSecurityHash ? "Enter key again to update" : "New admin API key"}
+                    onChange={(event) => {
+                      setSecurityForm((current) => ({
+                        ...current,
+                        credentialKey: event.target.value
+                      }));
+                      setSecurityFieldErrors((current) => ({
+                        ...current,
+                        credentialKey: undefined
+                      }));
+                    }}
+                  />
+                  {securityFieldErrors.credentialKey ? (
+                    <span className="field-error">{securityFieldErrors.credentialKey}</span>
+                  ) : null}
+                </Label>
+
+                <fieldset className="security-choice-group">
+                  <legend>System roles</legend>
+                  {systemRoleOptions.map((role) => (
+                    <label key={role} className="security-choice">
+                      <input
+                        type="checkbox"
+                        checked={securityForm.roles.includes(role)}
+                        onChange={() => toggleSecurityFormValue("roles", role)}
+                      />
+                      <span>{role}</span>
+                    </label>
+                  ))}
+                </fieldset>
+
+                <fieldset className="security-choice-group security-permission-grid">
+                  <legend>Explicit permissions</legend>
+                  {permissionOptions.map((permission) => (
+                    <label key={permission} className="security-choice">
+                      <input
+                        type="checkbox"
+                        checked={securityForm.permissions.includes(permission)}
+                        onChange={() => toggleSecurityFormValue("permissions", permission)}
+                      />
+                      <span>{permission}</span>
+                    </label>
+                  ))}
+                </fieldset>
+
+                <label className="security-choice security-enabled-choice">
+                  <input
+                    type="checkbox"
+                    checked={securityForm.isEnabled}
+                    onChange={(event) =>
+                      setSecurityForm((current) => ({
+                        ...current,
+                        isEnabled: event.target.checked
+                      }))
+                    }
+                  />
+                  <span>Enabled</span>
+                </label>
+
+                <div className="dialog-actions">
+                  <Button variant="secondary" onClick={resetSecurityForm}>
+                    Clear
+                  </Button>
+                  <Button disabled={isSecuritySaving} onClick={() => void saveSecurityAssignment()}>
+                    {isSecuritySaving ? "Saving" : "Save assignment"}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="security-assignment-list">
+                <div className="security-list-header">
+                  <div>
+                    <p className="eyebrow">Assignments</p>
+                    <h3>Persisted credentials</h3>
+                  </div>
+                  <Button variant="secondary" disabled={isSecurityLoading} onClick={() => void loadSecurityAssignments()}>
+                    Refresh
+                  </Button>
+                </div>
+
+                {isSecurityLoading ? (
+                  <div className="analytics-loading">
+                    <span className="skeleton skeleton-url" />
+                    <span className="skeleton skeleton-url" />
+                    <span className="skeleton skeleton-url" />
+                  </div>
+                ) : null}
+
+                {!isSecurityLoading && securityAssignments.length === 0 ? (
+                  <EmptyState
+                    title="No persisted assignments"
+                    description="Create an assignment to manage a credential outside bootstrap configuration."
+                  />
+                ) : null}
+
+                {!isSecurityLoading && securityAssignments.length > 0 ? (
+                  <div className="security-assignment-items">
+                    {securityAssignments.map((assignment) => (
+                      <div className="security-assignment-item" key={assignment.credentialKeyHash}>
+                        <div className="security-assignment-item-header">
+                          <div>
+                            <strong>{assignment.name}</strong>
+                            <code>{assignment.credentialKeyHash}</code>
+                          </div>
+                          <Badge variant={assignment.isEnabled ? "default" : "destructive"}>
+                            {assignment.isEnabled ? "Enabled" : "Disabled"}
+                          </Badge>
+                        </div>
+                        <dl>
+                          <div>
+                            <dt>Roles</dt>
+                            <dd>{assignment.roles.length > 0 ? assignment.roles.join(", ") : "None"}</dd>
+                          </div>
+                          <div>
+                            <dt>Permissions</dt>
+                            <dd>{assignment.permissions.length > 0 ? assignment.permissions.join(", ") : "None"}</dd>
+                          </div>
+                          <div>
+                            <dt>Created</dt>
+                            <dd>{formatDateTime(assignment.createdAtUtc)}</dd>
+                          </div>
+                        </dl>
+                        <div className="security-assignment-actions">
+                          <Button variant="secondary" onClick={() => startSecurityEdit(assignment)}>
+                            Edit
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            disabled={!assignment.isEnabled}
+                            onClick={() => requestDisableSecurityAssignment(assignment)}
+                          >
+                            Disable
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
         </div>

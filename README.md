@@ -315,6 +315,18 @@ Admin security is permission-based. Roles are only bundles of permissions:
 
 Security is disabled by default for local demo convenience. To protect admin API routes, set `ShortenLink:Security:Enabled` to `true` and send the configured API key header, which defaults to `X-ShortenLink-Api-Key`.
 
+Configured API keys remain the bootstrap/local fallback path. The reusable persistence layer also supports durable security assignments for API-key credentials: assignments store a credential key hash, enabled state, built-in system roles, and optional explicit permissions. When a persisted assignment exists for a credential, it is the backend source for that credential; a disabled persisted assignment rejects the credential even if a matching bootstrap key is still present in configuration.
+
+Admins with `security.assignments.manage` can manage durable assignments through backend API contracts:
+
+- `GET /api/security/assignments`
+- `PUT /api/security/assignments`
+- `POST /api/security/assignments/{credentialKeyHash}/disable`
+
+The upsert request accepts a raw `credentialKey` only so the server can hash it before persistence. List and disable responses never return raw API keys; they expose the credential key hash, assignment name, built-in roles, explicit permissions, enabled state, and creation timestamp. Unknown roles or permissions are rejected with stable client errors.
+
+System roles are predefined bundles in the library and are not customizable through this security slice. Permissions are the source of truth for authorization checks; roles only expand to permissions. Custom role management, user lifecycle, OAuth/OIDC, and role-management UI are intentionally out of scope.
+
 When security is enabled, missing credentials return `401 unauthorized`; valid credentials without the required permission return `403 forbidden`. The React app routes those outcomes to `/unauthorized` and `/forbidden`.
 
 For local frontend development, configure the React app with Vite environment variables instead of hard-coding secrets:
@@ -383,6 +395,12 @@ Phase 3 adds an opt-in click analytics path for redirects:
 - Set `ShortenLink:Analytics:Enabled` to `true` to capture short code, click timestamp, remote IP, user agent, and referrer for successful redirects.
 - Leave `ShortenLink:Analytics:UseAsyncWorker` as `true` to enqueue analytics writes through the hosted background worker so redirect responses do not wait for database persistence.
 - `ShortenLink:Analytics:QueueCapacity` controls the bounded in-memory queue used by the async worker.
+
+Admins with `analytics.read` can inspect persisted click activity through:
+
+- `GET /api/short-links/{code}/analytics`
+
+The response includes `clickCount`, `lastClickedAtUtc`, and a `recentClicks` list with clicked timestamp, remote IP address, user agent, and referrer. Links with no clicks return `clickCount: 0`, `lastClickedAtUtc: null`, and an empty recent-click list. When admin security is enabled, missing credentials return `401 unauthorized`, and credentials without `analytics.read` return `403 forbidden`.
 
 Example configuration:
 
@@ -488,6 +506,7 @@ The API now exposes:
 
 - `POST /api/short-links`
 - `GET /api/short-links/{code}`
+- `GET /api/short-links/{code}/analytics`
 - `DELETE /api/short-links/{code}`
 - `GET /{code}`
 - `GET /api/health`

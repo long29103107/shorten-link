@@ -1,3 +1,5 @@
+using Microsoft.EntityFrameworkCore;
+using ShortenLink.Core;
 using ShortenLink.Core.Domain;
 using ShortenLink.Core.Repositories;
 using ShortenLink.Infrastructure.Persistence;
@@ -21,5 +23,48 @@ public sealed class EfCoreShortLinkClickRepository : IShortLinkClickRepository
 
         dbContext.ShortLinkClicks.Add(ShortLinkClickRecord.FromDomain(shortLinkClick));
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<ShortLinkClickSummary> GetSummaryAsync(
+        string shortCode,
+        CancellationToken cancellationToken = default)
+    {
+        ShortCodeValidator.ValidateCodeOrThrow(shortCode);
+
+        var query = dbContext.ShortLinkClicks
+            .AsNoTracking()
+            .Where(click => click.ShortCode == shortCode);
+        var clickCount = await query.LongCountAsync(cancellationToken).ConfigureAwait(false);
+        var clickedAtValues = await query
+            .Select(click => click.ClickedAtUtc)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        DateTimeOffset? lastClickedAtUtc = clickedAtValues.Count == 0
+            ? null
+            : clickedAtValues.Max();
+
+        return new ShortLinkClickSummary(shortCode, clickCount, lastClickedAtUtc);
+    }
+
+    public async Task<IReadOnlyList<ShortLinkClick>> ListRecentAsync(
+        string shortCode,
+        int limit,
+        CancellationToken cancellationToken = default)
+    {
+        ShortCodeValidator.ValidateCodeOrThrow(shortCode);
+
+        var safeLimit = Math.Clamp(limit, 1, 100);
+        var records = await dbContext.ShortLinkClicks
+            .AsNoTracking()
+            .Where(click => click.ShortCode == shortCode)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return records
+            .OrderByDescending(click => click.ClickedAtUtc)
+            .ThenByDescending(click => click.Id)
+            .Take(safeLimit)
+            .Select(record => record.ToDomain())
+            .ToList();
     }
 }

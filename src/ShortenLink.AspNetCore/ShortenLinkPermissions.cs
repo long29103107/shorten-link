@@ -11,6 +11,7 @@ public static class ShortenLinkPermissions
     public const string ShortLinksExport = "short_links.export";
     public const string AnalyticsRead = "analytics.read";
     public const string AuditLogsRead = "audit_logs.read";
+    public const string SecurityAssignmentsManage = "security.assignments.manage";
 
     public static IReadOnlySet<string> All { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
@@ -22,7 +23,8 @@ public static class ShortenLinkPermissions
         ShortLinksDelete,
         ShortLinksExport,
         AnalyticsRead,
-        AuditLogsRead
+        AuditLogsRead,
+        SecurityAssignmentsManage
     };
 }
 
@@ -47,7 +49,8 @@ public static class ShortenLinkRoles
                 ShortenLinkPermissions.ShortLinksDelete,
                 ShortenLinkPermissions.ShortLinksExport,
                 ShortenLinkPermissions.AnalyticsRead,
-                ShortenLinkPermissions.AuditLogsRead
+                ShortenLinkPermissions.AuditLogsRead,
+                ShortenLinkPermissions.SecurityAssignmentsManage
             },
             [Editor] = new HashSet<string>(StringComparer.Ordinal)
             {

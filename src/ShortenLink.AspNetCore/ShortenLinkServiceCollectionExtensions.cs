@@ -83,8 +83,9 @@ public static class ShortenLinkServiceCollectionExtensions
         services.TryAddSingleton<IShortCodeGenerator, Base62ShortCodeGenerator>();
         services.TryAddScoped<IShortLinkRepository, EfCoreShortLinkRepository>();
         services.TryAddScoped<IShortLinkClickRepository, EfCoreShortLinkClickRepository>();
+        services.TryAddScoped<IShortenLinkSecurityAssignmentRepository, EfCoreShortenLinkSecurityAssignmentRepository>();
         services.TryAddScoped<IShortLinkService, ShortLinkService>();
-        services.TryAddSingleton<IShortenLinkAuthorizationService, ShortenLinkAuthorizationService>();
+        services.TryAddScoped<IShortenLinkAuthorizationService, ShortenLinkAuthorizationService>();
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<IHostedService, ShortLinkDatabaseInitializationService>());
 

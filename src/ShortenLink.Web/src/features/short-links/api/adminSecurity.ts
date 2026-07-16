@@ -7,7 +7,8 @@ export const shortLinkPermissions = {
   delete: "short_links.delete",
   export: "short_links.export",
   analyticsRead: "analytics.read",
-  auditLogsRead: "audit_logs.read"
+  auditLogsRead: "audit_logs.read",
+  securityAssignmentsManage: "security.assignments.manage"
 } as const;
 
 const allPermissions = Object.values(shortLinkPermissions);
@@ -34,6 +35,8 @@ export type AdminPermissionState = {
   canActivate: boolean;
   canDeactivate: boolean;
   canDelete: boolean;
+  canReadAnalytics: boolean;
+  canManageSecurityAssignments: boolean;
 };
 
 export function getAdminApiKeyHeader(): Record<string, string> {
@@ -57,7 +60,9 @@ export function getAdminPermissionState(): AdminPermissionState {
     canUpdate: permissions.has(shortLinkPermissions.update),
     canActivate: permissions.has(shortLinkPermissions.activate),
     canDeactivate: permissions.has(shortLinkPermissions.deactivate),
-    canDelete: permissions.has(shortLinkPermissions.delete)
+    canDelete: permissions.has(shortLinkPermissions.delete),
+    canReadAnalytics: permissions.has(shortLinkPermissions.analyticsRead),
+    canManageSecurityAssignments: permissions.has(shortLinkPermissions.securityAssignmentsManage)
   };
 }
 

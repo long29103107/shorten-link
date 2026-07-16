@@ -33,6 +33,66 @@ public sealed class EfCoreShortLinkClickRepositoryTests
     }
 
     [Fact]
+    public async Task GetSummaryAsync_ReturnsClickCountAndLastClickedAt()
+    {
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var repository = database.CreateRepository();
+        var firstClick = new DateTimeOffset(2026, 7, 12, 8, 30, 0, TimeSpan.Zero);
+        var secondClick = firstClick.AddHours(2);
+
+        await repository.AddAsync(new ShortLinkClick("sum001", firstClick, null, null, null));
+        await repository.AddAsync(new ShortLinkClick("sum001", secondClick, null, null, null));
+        await repository.AddAsync(new ShortLinkClick("other1", secondClick.AddHours(1), null, null, null));
+
+        var summary = await repository.GetSummaryAsync("sum001");
+
+        Assert.Equal("sum001", summary.ShortCode);
+        Assert.Equal(2, summary.ClickCount);
+        Assert.Equal(secondClick, summary.LastClickedAtUtc);
+    }
+
+    [Fact]
+    public async Task GetSummaryAsync_ReturnsZeroForNoClicks()
+    {
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var repository = database.CreateRepository();
+
+        var summary = await repository.GetSummaryAsync("empty1");
+
+        Assert.Equal("empty1", summary.ShortCode);
+        Assert.Equal(0, summary.ClickCount);
+        Assert.Null(summary.LastClickedAtUtc);
+    }
+
+    [Fact]
+    public async Task ListRecentAsync_ReturnsNewestClicksFirstWithSafeLimit()
+    {
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var repository = database.CreateRepository();
+        var baseTime = new DateTimeOffset(2026, 7, 12, 8, 30, 0, TimeSpan.Zero);
+
+        await repository.AddAsync(new ShortLinkClick("recent1", baseTime, "127.0.0.1", "old", null));
+        await repository.AddAsync(new ShortLinkClick("recent1", baseTime.AddMinutes(5), "127.0.0.2", "new", null));
+        await repository.AddAsync(new ShortLinkClick("recent1", baseTime.AddMinutes(3), "127.0.0.3", "middle", null));
+        await repository.AddAsync(new ShortLinkClick("other2", baseTime.AddMinutes(10), "127.0.0.4", "other", null));
+
+        var clicks = await repository.ListRecentAsync("recent1", 2);
+
+        Assert.Collection(
+            clicks,
+            click =>
+            {
+                Assert.Equal(baseTime.AddMinutes(5), click.ClickedAtUtc);
+                Assert.Equal("new", click.UserAgent);
+            },
+            click =>
+            {
+                Assert.Equal(baseTime.AddMinutes(3), click.ClickedAtUtc);
+                Assert.Equal("middle", click.UserAgent);
+            });
+    }
+
+    [Fact]
     public async Task Schema_HasExpectedIndexes()
     {
         await using var database = await SqliteTestDatabase.CreateAsync();

@@ -1,12 +1,12 @@
 ---
 phase: 011
 title: Security And Permission-Based Admin Protection
-status: active
+status: complete
 created_at: 2026-07-15
-updated_at: 2026-07-15
-current_task: 011_004
+updated_at: 2026-07-16
+current_task: null
 task_count: 4
-done_count: 3
+done_count: 4
 depends_on:
   - 010
 ---
@@ -54,21 +54,22 @@ Out:
 | 011_001 | Permission catalog and admin authorization foundation | done | 2026-07-15T20:47:00+07:00 |
 | 011_002 | Apply permissions to admin mutation endpoints | done | 2026-07-15T20:58:07+07:00 |
 | 011_003 | Admin UI permission-aware credential flow | done | 2026-07-15T21:27:51+07:00 |
-| 011_004 | Persist system role security assignments | planned | |
+| 011_004 | Persist system role security assignments | done | 2026-07-16T22:13:57+07:00 |
 
 ## Current Task
 
-`011_004 - Persist system role security assignments`
+No active task. Phase 011 is complete.
 
 ## Completed Notes
 
 - `011_001` established permission constants, role bundles, API-key permission evaluation, a protected admin list endpoint, frontend `401`/`403` routing, README security docs, and tests for role bundles plus protected endpoint outcomes.
 - `011_002` applied matching permissions to create, update, activate, deactivate, and delete endpoints, with tests for `401` and `403` mutation behavior.
 - `011_003` added frontend admin API-key header configuration, frontend permission bundles for Owner/Admin/Editor/Viewer, permission-aware admin mutation controls, and README documentation for local credential setup.
+- `011_004` added durable API-key security assignments with hashed credential lookup, enabled/disabled assignment state, built-in system role expansion, config fallback for local bootstrap credentials, persistence/schema tests, endpoint authorization coverage, and README security documentation.
 
 ## Next Task Proposal
 
-Implement `011_004` if Phase 011 still needs durable role assignment. `011_004` should keep Owner, Admin, Editor, and Viewer as built-in system roles, persist assignments only, and keep permissions as the source of truth.
+Phase 011 is complete. Opened Phase 012 for admin analytics insights, starting with `012_001 - Admin analytics summary API MVP`.
 
 ## Task Notes
 
@@ -358,100 +359,6 @@ dotnet test ShortenLink.slnx --verbosity minimal
 - Create, edit, activate, deactivate, and delete actions are unavailable when the configured frontend permission set lacks the matching permission.
 - README documents local frontend credential setup and clarifies that backend authorization remains the source of enforcement.
 - Verified with `npm run build` in `src\ShortenLink.Web`.
-
-### 011_004 - Persist System Role Security Assignments
-
-Source before compaction: `011_004-persist-system-role-security-assignments.md`
-
-#### Step Goal
-
-Add a durable security-assignment foundation for the local/admin API-key model without introducing custom roles or full user management: keep roles as built-in system bundles, persist which credential receives which system role or explicit permission set, and keep backend permission evaluation as the single authorization source.
-
-This task should turn the current config-only security model into a small production-aware persistence boundary while preserving the demo-friendly setup.
-
-#### Dependency
-
-- `011_001` introduced permission constants, role bundles, config-backed API-key authorization, and protected admin list behavior.
-- `011_002` applied permissions to admin mutation endpoints.
-- `011_003` should make the admin UI credential-aware before this task persists role assignments.
-
-#### Scope
-
-In:
-
-- Model built-in system roles such as Owner, Admin, Editor, and Viewer as non-deletable role bundles.
-- Persist API-key or local credential assignments to system roles and/or explicit permissions.
-- Ensure authorization evaluation can resolve permissions from persisted assignments.
-- Keep config-backed demo credentials as a bootstrap or fallback path for local development.
-- Add migration/schema coverage if the existing persistence layer requires it.
-- Add tests for persisted assignment evaluation, unknown credentials, disabled credentials, and role-to-permission expansion.
-- Document how system roles differ from custom roles and why custom role management is intentionally out of scope.
-
-Out:
-
-- Custom role creation/editing/deletion.
-- User account lifecycle, invitations, password reset, or profile management.
-- OAuth/OIDC/JWT integration.
-- Admin UI for managing users or roles.
-- Multi-tenant organization security.
-
-#### Relevant Standards
-
-- `.okf/standards/architecture.md`
-- `.okf/standards/coding-style.md`
-- `.okf/standards/api-design.md`
-- `.okf/standards/testing.md`
-- `PRODUCT_VISION.md`
-
-#### Affected Files
-
-Expected starting points:
-
-- `.okf/phase/011/PHASE_SUMMARY.md`
-- `.okf/phase/011/011_004-persist-system-role-security-assignments.md`
-- `src\ShortenLink.AspNetCore\ShortenLinkAuthorizationService.cs`
-- `src\ShortenLink.AspNetCore\ShortenLinkPermissions.cs`
-- `src\ShortenLink.Infrastructure\`
-- `src\ShortenLink.Core\`
-- `src\ShortenLink.Api\appsettings.json`
-- `tests\ShortenLink.Api.Tests\`
-- `tests\ShortenLink.Infrastructure.Tests\`
-- `README.md`
-
-#### Acceptance Criteria
-
-- Built-in system roles are represented as stable role bundles and cannot be customized through this task.
-- Persisted security assignments can grant a credential one or more system roles.
-- Permission evaluation expands persisted system roles into effective permissions.
-- Missing, disabled, or unknown credentials are rejected consistently.
-- Local development can still use documented bootstrap/demo credentials.
-- Tests cover persisted role assignment success and failure paths.
-- Documentation explains that permissions are the source of truth and system roles are predefined bundles.
-
-#### Foundation for Next Step
-
-This task should leave a durable security-assignment boundary that can later support audit logs, admin settings UI, or external identity integration without rewriting permission evaluation.
-
-#### Verification
-
-Run after implementation:
-
-```powershell
-dotnet build ShortenLink.slnx --verbosity minimal
-dotnet test ShortenLink.slnx --verbosity minimal
-```
-
-Run frontend verification too if any admin credential UI changes are needed:
-
-```powershell
-cd .\src\ShortenLink.Web
-npm run build
-```
-
-#### Done Notes
-
-Not started.
-
 
 ## Scan Rule
 Read this file before working on any `011_*` task note. Keep implementation permission-based, with roles acting as permission bundles rather than hard-coded authorization logic.

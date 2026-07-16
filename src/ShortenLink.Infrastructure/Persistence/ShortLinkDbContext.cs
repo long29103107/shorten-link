@@ -13,6 +13,8 @@ public sealed class ShortLinkDbContext : DbContext
 
     public DbSet<ShortLinkClickRecord> ShortLinkClicks => Set<ShortLinkClickRecord>();
 
+    public DbSet<ShortenLinkSecurityAssignmentRecord> SecurityAssignments => Set<ShortenLinkSecurityAssignmentRecord>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ArgumentNullException.ThrowIfNull(modelBuilder);
@@ -71,6 +73,37 @@ public sealed class ShortLinkDbContext : DbContext
             entity.HasIndex(click => click.ShortCode);
             entity.HasIndex(click => click.ClickedAtUtc);
             entity.HasIndex(click => new { click.ShortCode, click.ClickedAtUtc });
+        });
+
+        modelBuilder.Entity<ShortenLinkSecurityAssignmentRecord>(entity =>
+        {
+            entity.ToTable("shorten_link_security_assignments");
+            entity.HasKey(assignment => assignment.CredentialKeyHash);
+
+            entity.Property(assignment => assignment.CredentialKeyHash)
+                .HasMaxLength(128)
+                .IsRequired();
+
+            entity.Property(assignment => assignment.Name)
+                .HasMaxLength(256)
+                .IsRequired();
+
+            entity.Property(assignment => assignment.RolesJson)
+                .HasColumnName("Roles")
+                .IsRequired();
+
+            entity.Property(assignment => assignment.PermissionsJson)
+                .HasColumnName("Permissions")
+                .IsRequired();
+
+            entity.Property(assignment => assignment.IsEnabled)
+                .IsRequired();
+
+            entity.Property(assignment => assignment.CreatedAt)
+                .IsRequired();
+
+            entity.HasIndex(assignment => assignment.IsEnabled);
+            entity.HasIndex(assignment => assignment.CreatedAt);
         });
     }
 }
