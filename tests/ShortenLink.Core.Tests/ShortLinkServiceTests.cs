@@ -237,6 +237,63 @@ public sealed class ShortLinkServiceTests
         public Task<int> CountAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(links.Count);
 
+        public Task<ShortLinkListPage> ListPageAsync(
+            int skip,
+            int limit,
+            ShortLinkListQuery query,
+            CancellationToken cancellationToken = default)
+        {
+            var filtered = links.Values
+                .Where(link => string.IsNullOrWhiteSpace(query.Search)
+                    || link.Code.Contains(query.Search, StringComparison.OrdinalIgnoreCase)
+                    || link.OriginalUrl.AbsoluteUri.Contains(query.Search, StringComparison.OrdinalIgnoreCase))
+                .Where(link => query.Status switch
+                {
+                    ShortLinkListStatus.Active => link.IsActive && !link.IsExpired(query.Now),
+                    ShortLinkListStatus.Inactive => !link.IsActive,
+                    ShortLinkListStatus.Expired => link.IsActive && link.IsExpired(query.Now),
+                    ShortLinkListStatus.ExpiringSoon => link.IsActive
+                        && !link.IsExpired(query.Now)
+                        && link.ExpiresAt is not null
+                        && link.ExpiresAt <= query.ExpiringSoonBefore,
+                    _ => true
+                })
+                .ToList();
+
+            var sorted = query.SortBy switch
+            {
+                ShortLinkListSortBy.Expiry => ApplyDirection(filtered, query.SortDirection, link => link.ExpiresAt ?? DateTimeOffset.MaxValue),
+                ShortLinkListSortBy.Destination => ApplyDirection(filtered, query.SortDirection, link => link.OriginalUrl.AbsoluteUri),
+                ShortLinkListSortBy.Code => ApplyDirection(filtered, query.SortDirection, link => link.Code),
+                ShortLinkListSortBy.Status => ApplyDirection(filtered, query.SortDirection, link => GetStatusRank(link, query.Now)),
+                _ => ApplyDirection(filtered, query.SortDirection, link => link.CreatedAt)
+            };
+
+            return Task.FromResult(new ShortLinkListPage(
+                sorted.Skip(skip).Take(limit).ToList(),
+                filtered.Count));
+        }
+
+        private static IEnumerable<ShortLink> ApplyDirection<TKey>(
+            IEnumerable<ShortLink> shortLinks,
+            ShortLinkSortDirection direction,
+            Func<ShortLink, TKey> keySelector)
+        {
+            return direction == ShortLinkSortDirection.Asc
+                ? shortLinks.OrderBy(keySelector).ThenBy(link => link.Code, StringComparer.Ordinal)
+                : shortLinks.OrderByDescending(keySelector).ThenBy(link => link.Code, StringComparer.Ordinal);
+        }
+
+        private static int GetStatusRank(ShortLink shortLink, DateTimeOffset now)
+        {
+            if (!shortLink.IsActive)
+            {
+                return 2;
+            }
+
+            return shortLink.IsExpired(now) ? 1 : 0;
+        }
+
         public Task<ShortLink?> FindByCodeAsync(string code, CancellationToken cancellationToken = default)
         {
             FindByCodeCallCount++;

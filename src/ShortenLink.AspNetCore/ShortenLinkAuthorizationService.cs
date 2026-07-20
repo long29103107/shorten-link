@@ -1,8 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
 using ShortenLink.Core.Repositories;
-using System.Security.Cryptography;
-using System.Text;
+using ShortenLink.Core.Security;
 
 namespace ShortenLink.AspNetCore;
 
@@ -24,15 +23,18 @@ public sealed record ShortenLinkAuthorizationResult(
         new(true, true, null, null);
 
     public static ShortenLinkAuthorizationResult Unauthorized() =>
-        new(false, false, "unauthorized", "A valid admin API key is required.");
+        new(false, false, "unauthorized", "A valid admin credential is required.");
 
     public static ShortenLinkAuthorizationResult Forbidden() =>
-        new(false, true, "forbidden", "The admin API key does not include the required permission.");
+        new(false, true, "forbidden", "The admin credential does not include the required permission.");
 }
 
 public sealed class ShortenLinkAuthorizationService(
     IOptions<ShortenLinkOptions> options,
-    IShortenLinkSecurityAssignmentRepository securityAssignmentRepository) : IShortenLinkAuthorizationService
+    IShortenLinkSecurityAssignmentRepository securityAssignmentRepository,
+    IShortenLinkUserApiKeyRepository userApiKeyRepository,
+    IShortenLinkSecurityUserRepository userRepository,
+    IShortenLinkUserSessionService userSessionService) : IShortenLinkAuthorizationService
 {
     public async Task<ShortenLinkAuthorizationResult> AuthorizeAsync(
         HttpContext httpContext,
@@ -48,6 +50,21 @@ public sealed class ShortenLinkAuthorizationService(
             return ShortenLinkAuthorizationResult.Success();
         }
 
+        if (HasBearerToken(httpContext))
+        {
+            var session = await userSessionService
+                .GetCurrentUserAsync(httpContext, cancellationToken)
+                .ConfigureAwait(false);
+            if (!session.Succeeded || session.Principal is null)
+            {
+                return ShortenLinkAuthorizationResult.Unauthorized();
+            }
+
+            return session.Principal.Permissions.Contains(permission, StringComparer.Ordinal)
+                ? ShortenLinkAuthorizationResult.Success()
+                : ShortenLinkAuthorizationResult.Forbidden();
+        }
+
         if (!httpContext.Request.Headers.TryGetValue(security.HeaderName, out var keyValues))
         {
             return ShortenLinkAuthorizationResult.Unauthorized();
@@ -59,8 +76,36 @@ public sealed class ShortenLinkAuthorizationService(
             return ShortenLinkAuthorizationResult.Unauthorized();
         }
 
+        var apiKeyHash = ShortenLinkSecurityCredentialHasher.HashApiKey(apiKey);
+        var userApiKey = await userApiKeyRepository
+            .FindByKeyHashAsync(apiKeyHash, cancellationToken)
+            .ConfigureAwait(false);
+        if (userApiKey is not null)
+        {
+            if (!userApiKey.IsEnabled)
+            {
+                return ShortenLinkAuthorizationResult.Unauthorized();
+            }
+
+            var owner = await userRepository
+                .FindByIdAsync(userApiKey.UserId, cancellationToken)
+                .ConfigureAwait(false);
+            if (owner is null || !owner.IsEnabled)
+            {
+                return ShortenLinkAuthorizationResult.Unauthorized();
+            }
+
+            var userPrincipal = await userSessionService
+                .CreatePrincipalAsync(owner, userApiKey.CreatedAt, cancellationToken)
+                .ConfigureAwait(false);
+
+            return userPrincipal.Permissions.Contains(permission, StringComparer.Ordinal)
+                ? ShortenLinkAuthorizationResult.Success()
+                : ShortenLinkAuthorizationResult.Forbidden();
+        }
+
         var persistedAssignment = await securityAssignmentRepository
-            .FindByCredentialKeyHashAsync(HashCredential(apiKey), cancellationToken)
+            .FindByCredentialKeyHashAsync(apiKeyHash, cancellationToken)
             .ConfigureAwait(false);
         if (persistedAssignment is not null)
         {
@@ -121,9 +166,10 @@ public sealed class ShortenLinkAuthorizationService(
         return permissions;
     }
 
-    private static string HashCredential(string apiKey)
+    private static bool HasBearerToken(HttpContext httpContext)
     {
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(apiKey));
-        return Convert.ToHexString(hash).ToLowerInvariant();
+        var authorization = httpContext.Request.Headers.Authorization.FirstOrDefault();
+        return !string.IsNullOrWhiteSpace(authorization)
+            && authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase);
     }
 }

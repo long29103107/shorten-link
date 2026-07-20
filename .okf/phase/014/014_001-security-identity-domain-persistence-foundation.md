@@ -2,8 +2,9 @@
 task: 014_001
 phase: 014
 title: Security Identity Domain And Persistence Foundation
-status: active
+status: done
 created_at: 2026-07-16
+completed_at: 2026-07-17T14:33:19+07:00
 depends_on:
   - 013_001
   - 013_002
@@ -103,4 +104,8 @@ dotnet test tests\ShortenLink.Api.Tests\ShortenLink.Api.Tests.csproj --verbosity
 
 ## Done Notes
 
-Not started.
+- Added Core security identity contracts for permissions, system role bundles, custom roles, users, user-owned API keys, and credential hashing.
+- Added repository interfaces and EF Core persistence for custom roles, security users, and user API keys.
+- Added schema initialization for identity tables so existing SQLite/PostgreSQL databases can be backfilled without replacing the database.
+- Registered identity repositories in `AddShortenLink` and ensured a hidden bootstrap admin user with username `admin`, password `admin`, and Owner role is seeded through a password hash.
+- Added focused Core, Infrastructure, and API verification covering role bundles, custom-role permission validation, hidden bootstrap admin behavior, hash-only API key storage, repository persistence, and endpoint regression coverage.

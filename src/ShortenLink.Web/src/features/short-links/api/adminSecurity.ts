@@ -1,3 +1,5 @@
+import type { SecurityCurrentUser } from "../types";
+
 export const shortLinkPermissions = {
   read: "short_links.read",
   create: "short_links.create",
@@ -12,6 +14,8 @@ export const shortLinkPermissions = {
 } as const;
 
 const allPermissions = Object.values(shortLinkPermissions);
+const sessionTokenKey = "shortenLink.sessionToken";
+const currentUserKey = "shortenLink.currentUser";
 
 const rolePermissionBundles: Record<string, readonly string[]> = {
   owner: allPermissions,
@@ -39,7 +43,42 @@ export type AdminPermissionState = {
   canManageSecurityAssignments: boolean;
 };
 
+export function getStoredSessionToken(): string | null {
+  return window.localStorage.getItem(sessionTokenKey);
+}
+
+export function getStoredCurrentUser(): SecurityCurrentUser | null {
+  const value = window.localStorage.getItem(currentUserKey);
+  if (!value) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(value) as SecurityCurrentUser;
+  } catch {
+    clearStoredSession();
+    return null;
+  }
+}
+
+export function storeSession(token: string, user: SecurityCurrentUser): void {
+  window.localStorage.setItem(sessionTokenKey, token);
+  window.localStorage.setItem(currentUserKey, JSON.stringify(user));
+  window.dispatchEvent(new Event("shortenlink-auth-changed"));
+}
+
+export function clearStoredSession(): void {
+  window.localStorage.removeItem(sessionTokenKey);
+  window.localStorage.removeItem(currentUserKey);
+  window.dispatchEvent(new Event("shortenlink-auth-changed"));
+}
+
 export function getAdminApiKeyHeader(): Record<string, string> {
+  const sessionToken = getStoredSessionToken();
+  if (sessionToken) {
+    return { Authorization: `Bearer ${sessionToken}` };
+  }
+
   const apiKey = import.meta.env.VITE_SHORTENLINK_ADMIN_API_KEY?.trim();
   if (!apiKey) {
     return {};
@@ -67,6 +106,11 @@ export function getAdminPermissionState(): AdminPermissionState {
 }
 
 function getConfiguredPermissions(): Set<string> {
+  const currentUser = getStoredCurrentUser();
+  if (currentUser) {
+    return new Set(currentUser.permissions);
+  }
+
   const configuredPermissions = parseList(import.meta.env.VITE_SHORTENLINK_ADMIN_PERMISSIONS);
   const configuredRoles = parseList(import.meta.env.VITE_SHORTENLINK_ADMIN_ROLE);
 

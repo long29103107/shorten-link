@@ -1,12 +1,13 @@
 ---
 phase: 014
 title: User And Role Based Security
-status: active
+status: done
 created_at: 2026-07-16
-updated_at: 2026-07-16
-current_task: 014_001
-task_count: 1
-done_count: 0
+updated_at: 2026-07-17
+completed_at: 2026-07-17T15:48:54+07:00
+current_task: null
+task_count: 6
+done_count: 6
 depends_on:
   - 013
 ---
@@ -61,19 +62,29 @@ Out:
 
 | Task | Title | Status | Done At |
 |---|---|---|---|
-| 014_001 | Security identity domain and persistence foundation | active |  |
+| 014_001 | Security identity domain and persistence foundation | done | 2026-07-17T14:33:19+07:00 |
+| 014_002 | User login and authenticated admin session API | done | 2026-07-17T15:10:32+07:00 |
+| 014_003 | Role and user management API MVP | done | 2026-07-17T15:19:33+07:00 |
+| 014_004 | User-owned API key management and authorization | done | 2026-07-17T15:27:21+07:00 |
+| 014_005 | Admin login and identity management UI MVP | done | 2026-07-17T15:44:56+07:00 |
+| 014_006 | Security model verification and documentation closure | done | 2026-07-17T15:48:54+07:00 |
 
 ## Current Task
 
-`014_001` is active.
+No active task. Phase 014 is complete.
 
 ## Completed Notes
 
-- None yet.
+- `014_001` added Core security identity contracts for permissions, system role bundles, custom roles, users, user-owned API keys, and credential hashing; added EF Core persistence/repositories/schema initialization; registered the repositories in DI; and ensured a hidden bootstrap admin user is seeded with hashed password material.
+- `014_002` added password verification, signed local/demo user session tokens, login/current-user APIs, Bearer-token authorization for protected admin endpoints, README/appsettings documentation, and tests for bootstrap login, failed login, disabled users, current-user permissions, and role-derived endpoint authorization.
+- `014_003` added protected backend APIs for listing system/custom roles, creating/updating/disabling custom roles, listing non-hidden users, creating/updating/disabling normal users, rejecting invalid permissions or roles, protecting bootstrap admin from normal management APIs, README documentation, and focused repository/API tests.
+- `014_004` added logged-in user API-key list/create/rename/disable APIs, one-time raw key create responses, hash-only key persistence, ownership checks, user-owned API-key authorization through owner role permissions, README documentation, and tests for key metadata isolation, disabled-key rejection, and protected endpoint access.
+- `014_005` added the frontend login/session bootstrap, Bearer-token admin request path, permission-aware navigation, identity-management UI for users/roles/API keys, one-time raw API-key display, focused Bun tests, and successful frontend/backend verification.
+- `014_006` closed Phase 014 by auditing coverage, tightening README security documentation for local/demo identity workflows, and passing final backend/frontend verification.
 
 ## Next Task Proposal
 
-After `014_001`, add login/session or token issuance APIs so frontend authentication can stop relying on Vite-configured admin API keys.
+Phase 014 is complete. Proposed next phase: `015 - Admin discovery and filtering`, focused on search/filter/sort for the protected admin short-link list.
 
 ## Task Notes
 

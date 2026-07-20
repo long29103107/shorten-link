@@ -1,28 +1,53 @@
 import type { ApiErrorPayload } from "../types";
 import { showToast } from "../../../shared/toast";
+import {
+  classifyFetchFailure,
+  classifyHttpFailure,
+  type ApiFailure
+} from "../../../shared/api/apiFailure";
 import { getAdminApiKeyHeader } from "./adminSecurity";
 
-export class ApiError extends Error {
-  readonly status: number;
-  readonly errorCode: string;
+type FetchJsonOptions = RequestInit & {
+  suppressAuthRedirect?: boolean;
+};
 
-  constructor(status: number, payload: ApiErrorPayload) {
-    super(payload.message);
+export class ApiError extends Error {
+  readonly status: number | null;
+  readonly errorCode: string;
+  readonly kind: ApiFailure["kind"];
+  readonly retryable: boolean;
+  readonly shouldNavigateToAuth: boolean;
+  readonly failure: ApiFailure;
+
+  constructor(failure: ApiFailure) {
+    super(failure.message);
     this.name = "ApiError";
-    this.status = status;
-    this.errorCode = payload.errorCode;
+    this.status = failure.status;
+    this.errorCode = failure.errorCode;
+    this.kind = failure.kind;
+    this.retryable = failure.retryable;
+    this.shouldNavigateToAuth = failure.shouldNavigateToAuth;
+    this.failure = failure;
   }
 }
 
-export async function fetchJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
-  const response = await fetch(input, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...getAdminApiKeyHeader(),
-      ...(init?.headers ?? {})
-    }
-  });
+export async function fetchJson<T>(input: RequestInfo | URL, init?: FetchJsonOptions): Promise<T> {
+  const { suppressAuthRedirect = false, ...requestInit } = init ?? {};
+  let response: Response;
+  try {
+    response = await fetch(input, {
+      ...requestInit,
+      headers: {
+        "Content-Type": "application/json",
+        ...getAdminApiKeyHeader(),
+        ...(requestInit.headers ?? {})
+      }
+    });
+  } catch (error) {
+    const failure = classifyFetchFailure(error);
+    showFailureToast(failure);
+    throw new ApiError(failure);
+  }
 
   if (response.ok) {
     if (response.status === 204) {
@@ -36,19 +61,24 @@ export async function fetchJson<T>(input: RequestInfo | URL, init?: RequestInit)
     errorCode: "unexpected_error",
     message: `Request failed with status ${response.status}.`
   };
+  const failure = classifyHttpFailure(response.status, payload);
 
-  if (response.status === 401 || response.status === 403) {
+  if (failure.shouldNavigateToAuth && !suppressAuthRedirect) {
     navigateToStatusPage(response.status);
-    throw new ApiError(response.status, payload);
+    throw new ApiError(failure);
   }
 
+  showFailureToast(failure);
+
+  throw new ApiError(failure);
+}
+
+function showFailureToast(failure: ApiFailure) {
   showToast({
-    title: "Request failed",
-    message: payload.message,
+    title: failure.retryable ? "Server temporarily unavailable" : "Request failed",
+    message: failure.message,
     variant: "error"
   });
-
-  throw new ApiError(response.status, payload);
 }
 
 async function safeReadError(response: Response): Promise<ApiErrorPayload | null> {

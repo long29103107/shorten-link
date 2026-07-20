@@ -1,4 +1,5 @@
 using ShortenLink.Core.Domain;
+using ShortenLink.Core.Services;
 
 namespace ShortenLink.Core.Repositories;
 
@@ -16,6 +17,12 @@ public interface IShortLinkRepository
         CancellationToken cancellationToken = default);
 
     Task<int> CountAsync(CancellationToken cancellationToken = default);
+
+    Task<ShortLinkListPage> ListPageAsync(
+        int skip,
+        int limit,
+        ShortLinkListQuery query,
+        CancellationToken cancellationToken = default);
 
     Task<ShortLink?> FindByCodeAsync(string code, CancellationToken cancellationToken = default);
 

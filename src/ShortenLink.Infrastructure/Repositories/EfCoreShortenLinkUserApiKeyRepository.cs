@@ -1,0 +1,104 @@
+using Microsoft.EntityFrameworkCore;
+using ShortenLink.Core.Repositories;
+using ShortenLink.Core.Security;
+using ShortenLink.Infrastructure.Persistence;
+
+namespace ShortenLink.Infrastructure.Repositories;
+
+public sealed class EfCoreShortenLinkUserApiKeyRepository : IShortenLinkUserApiKeyRepository
+{
+    private readonly ShortLinkDbContext dbContext;
+
+    public EfCoreShortenLinkUserApiKeyRepository(ShortLinkDbContext dbContext)
+    {
+        this.dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
+    }
+
+    public async Task<IReadOnlyList<ShortenLinkUserApiKey>> ListByUserIdAsync(
+        string userId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+
+        var records = await dbContext.SecurityUserApiKeys
+            .AsNoTracking()
+            .Where(apiKey => apiKey.UserId == userId)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return records
+            .OrderBy(apiKey => apiKey.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(apiKey => apiKey.CreatedAt)
+            .Select(apiKey => apiKey.ToDomain())
+            .ToList();
+    }
+
+    public async Task<ShortenLinkUserApiKey?> FindByIdAsync(
+        string id,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+
+        var record = await dbContext.SecurityUserApiKeys
+            .AsNoTracking()
+            .FirstOrDefaultAsync(apiKey => apiKey.Id == id, cancellationToken)
+            .ConfigureAwait(false);
+
+        return record?.ToDomain();
+    }
+
+    public async Task<ShortenLinkUserApiKey?> FindByKeyHashAsync(
+        string keyHash,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(keyHash);
+
+        var record = await dbContext.SecurityUserApiKeys
+            .AsNoTracking()
+            .FirstOrDefaultAsync(apiKey => apiKey.KeyHash == keyHash, cancellationToken)
+            .ConfigureAwait(false);
+
+        return record?.ToDomain();
+    }
+
+    public async Task AddOrUpdateAsync(
+        ShortenLinkUserApiKey apiKey,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(apiKey);
+
+        var record = await dbContext.SecurityUserApiKeys
+            .FirstOrDefaultAsync(candidate => candidate.Id == apiKey.Id, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (record is null)
+        {
+            dbContext.SecurityUserApiKeys.Add(ShortenLinkUserApiKeyRecord.FromDomain(apiKey));
+        }
+        else
+        {
+            record.UpdateFromDomain(apiKey);
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<bool> DisableAsync(
+        string id,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+
+        var record = await dbContext.SecurityUserApiKeys
+            .FirstOrDefaultAsync(apiKey => apiKey.Id == id, cancellationToken)
+            .ConfigureAwait(false);
+        if (record is null)
+        {
+            return false;
+        }
+
+        record.IsEnabled = false;
+        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+}

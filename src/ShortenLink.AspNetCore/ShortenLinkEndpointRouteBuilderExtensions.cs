@@ -13,6 +13,7 @@ using ShortenLink.Core.Services;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json.Serialization;
 
 namespace ShortenLink.AspNetCore;
 
@@ -52,7 +53,55 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
         var redirectEndpoint = endpoints.MapGet("/{code}", RedirectShortLinkAsync)
             .WithName("RedirectShortLink");
 
-        var securityAssignments = endpoints.MapGroup("/api/security/assignments")
+        var security = endpoints.MapGroup("/api/security")
+            .WithTags("Security");
+
+        security.MapPost("/login", LoginSecurityUserAsync)
+            .WithName("LoginSecurityUser");
+
+        security.MapGet("/me", GetCurrentSecurityUserAsync)
+            .WithName("GetCurrentSecurityUser");
+
+        var userApiKeys = security.MapGroup("/api-keys")
+            .WithTags("Security API Keys");
+
+        userApiKeys.MapGet("/", ListCurrentUserApiKeysAsync)
+            .WithName("ListCurrentUserApiKeys");
+
+        userApiKeys.MapPost("/", CreateCurrentUserApiKeyAsync)
+            .WithName("CreateCurrentUserApiKey");
+
+        userApiKeys.MapPut("/{id}", RenameCurrentUserApiKeyAsync)
+            .WithName("RenameCurrentUserApiKey");
+
+        userApiKeys.MapPost("/{id}/disable", DisableCurrentUserApiKeyAsync)
+            .WithName("DisableCurrentUserApiKey");
+
+        var securityRoles = security.MapGroup("/roles")
+            .WithTags("Security Roles");
+
+        securityRoles.MapGet("/", ListSecurityRolesAsync)
+            .WithName("ListSecurityRoles");
+
+        securityRoles.MapPut("/custom", UpsertCustomSecurityRoleAsync)
+            .WithName("UpsertCustomSecurityRole");
+
+        securityRoles.MapPost("/custom/{id}/disable", DisableCustomSecurityRoleAsync)
+            .WithName("DisableCustomSecurityRole");
+
+        var securityUsers = security.MapGroup("/users")
+            .WithTags("Security Users");
+
+        securityUsers.MapGet("/", ListSecurityUsersAsync)
+            .WithName("ListSecurityUsers");
+
+        securityUsers.MapPut("/", UpsertSecurityUserAsync)
+            .WithName("UpsertSecurityUser");
+
+        securityUsers.MapPost("/{id}/disable", DisableSecurityUserAsync)
+            .WithName("DisableSecurityUser");
+
+        var securityAssignments = security.MapGroup("/assignments")
             .WithTags("Security Assignments");
 
         securityAssignments.MapGet("/", ListSecurityAssignmentsAsync)
@@ -76,6 +125,381 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
         return endpoints;
     }
 
+    private static async Task<Results<Ok<SecurityLoginResponse>, JsonHttpResult<ShortLinkErrorResponse>>> LoginSecurityUserAsync(
+        SecurityLoginRequest request,
+        IShortenLinkUserSessionService userSessionService,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var missingLoginFields = new List<(string Field, string Message)>();
+        if (string.IsNullOrWhiteSpace(request.Username))
+        {
+            missingLoginFields.Add(("username", "Username is required."));
+        }
+        if (string.IsNullOrWhiteSpace(request.Password))
+        {
+            missingLoginFields.Add(("password", "Password is required."));
+        }
+        if (missingLoginFields.Count > 0)
+        {
+            return CreateErrorResponse(
+                "invalid_login",
+                "Username or password is invalid.",
+                CreateFieldErrors(missingLoginFields));
+        }
+
+        var login = await userSessionService
+            .LoginAsync(request.Username, request.Password, cancellationToken)
+            .ConfigureAwait(false);
+        if (!login.Succeeded || login.Principal is null || string.IsNullOrWhiteSpace(login.Token))
+        {
+            return CreateErrorResponse(login.ErrorCode, login.ErrorMessage);
+        }
+
+        return TypedResults.Ok(new SecurityLoginResponse(
+            login.Token,
+            SecurityCurrentUserResponse.FromPrincipal(login.Principal)));
+    }
+
+    private static async Task<Results<Ok<SecurityCurrentUserResponse>, JsonHttpResult<ShortLinkErrorResponse>>> GetCurrentSecurityUserAsync(
+        IShortenLinkUserSessionService userSessionService,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var session = await userSessionService
+            .GetCurrentUserAsync(httpContext, cancellationToken)
+            .ConfigureAwait(false);
+        if (!session.Succeeded || session.Principal is null)
+        {
+            return CreateErrorResponse(session.ErrorCode, session.ErrorMessage);
+        }
+
+        return TypedResults.Ok(SecurityCurrentUserResponse.FromPrincipal(session.Principal));
+    }
+
+    private static async Task<Results<Ok<SecurityUserApiKeysListResponse>, JsonHttpResult<ShortLinkErrorResponse>>> ListCurrentUserApiKeysAsync(
+        IShortenLinkUserSessionService userSessionService,
+        IShortenLinkUserApiKeyRepository apiKeyRepository,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var session = await userSessionService
+            .GetCurrentUserAsync(httpContext, cancellationToken)
+            .ConfigureAwait(false);
+        if (!session.Succeeded || session.Principal is null)
+        {
+            return CreateErrorResponse(session.ErrorCode, session.ErrorMessage);
+        }
+
+        var apiKeys = await apiKeyRepository
+            .ListByUserIdAsync(session.Principal.UserId, cancellationToken)
+            .ConfigureAwait(false);
+
+        return TypedResults.Ok(new SecurityUserApiKeysListResponse(
+            apiKeys.Select(SecurityUserApiKeyResponse.FromDomain).ToList()));
+    }
+
+    private static async Task<Results<Ok<SecurityUserApiKeyCreatedResponse>, JsonHttpResult<ShortLinkErrorResponse>>> CreateCurrentUserApiKeyAsync(
+        SecurityUserApiKeyCreateRequest request,
+        IShortenLinkUserSessionService userSessionService,
+        IShortenLinkUserApiKeyRepository apiKeyRepository,
+        TimeProvider timeProvider,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var session = await userSessionService
+            .GetCurrentUserAsync(httpContext, cancellationToken)
+            .ConfigureAwait(false);
+        if (!session.Succeeded || session.Principal is null)
+        {
+            return CreateErrorResponse(session.ErrorCode, session.ErrorMessage);
+        }
+
+        if (string.IsNullOrWhiteSpace(request.DisplayName))
+        {
+            return CreateFieldErrorResponse("invalid_api_key", "API key display name is required.", "displayName");
+        }
+
+        var rawApiKey = CreateRawUserApiKey();
+        var apiKey = new ShortenLinkUserApiKey(
+            Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture),
+            session.Principal.UserId,
+            request.DisplayName.Trim(),
+            ShortenLinkSecurityCredentialHasher.HashApiKey(rawApiKey),
+            isEnabled: true,
+            timeProvider.GetUtcNow());
+
+        await apiKeyRepository.AddOrUpdateAsync(apiKey, cancellationToken).ConfigureAwait(false);
+
+        return TypedResults.Ok(new SecurityUserApiKeyCreatedResponse(
+            SecurityUserApiKeyResponse.FromDomain(apiKey),
+            rawApiKey));
+    }
+
+    private static async Task<Results<Ok<SecurityUserApiKeyResponse>, JsonHttpResult<ShortLinkErrorResponse>>> RenameCurrentUserApiKeyAsync(
+        string id,
+        SecurityUserApiKeyRenameRequest request,
+        IShortenLinkUserSessionService userSessionService,
+        IShortenLinkUserApiKeyRepository apiKeyRepository,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var session = await userSessionService
+            .GetCurrentUserAsync(httpContext, cancellationToken)
+            .ConfigureAwait(false);
+        if (!session.Succeeded || session.Principal is null)
+        {
+            return CreateErrorResponse(session.ErrorCode, session.ErrorMessage);
+        }
+
+        if (string.IsNullOrWhiteSpace(request.DisplayName))
+        {
+            return CreateFieldErrorResponse("invalid_api_key", "API key display name is required.", "displayName");
+        }
+
+        var apiKey = await apiKeyRepository.FindByIdAsync(id, cancellationToken).ConfigureAwait(false);
+        if (apiKey is null || !apiKey.UserId.Equals(session.Principal.UserId, StringComparison.Ordinal))
+        {
+            return CreateErrorResponse(ShortLinkErrorCodes.NotFound, "API key was not found.");
+        }
+
+        var renamed = new ShortenLinkUserApiKey(
+            apiKey.Id,
+            apiKey.UserId,
+            request.DisplayName.Trim(),
+            apiKey.KeyHash,
+            apiKey.IsEnabled,
+            apiKey.CreatedAt);
+
+        await apiKeyRepository.AddOrUpdateAsync(renamed, cancellationToken).ConfigureAwait(false);
+        return TypedResults.Ok(SecurityUserApiKeyResponse.FromDomain(renamed));
+    }
+
+    private static async Task<Results<Ok<SecurityUserApiKeyDisabledResponse>, JsonHttpResult<ShortLinkErrorResponse>>> DisableCurrentUserApiKeyAsync(
+        string id,
+        IShortenLinkUserSessionService userSessionService,
+        IShortenLinkUserApiKeyRepository apiKeyRepository,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var session = await userSessionService
+            .GetCurrentUserAsync(httpContext, cancellationToken)
+            .ConfigureAwait(false);
+        if (!session.Succeeded || session.Principal is null)
+        {
+            return CreateErrorResponse(session.ErrorCode, session.ErrorMessage);
+        }
+
+        var apiKey = await apiKeyRepository.FindByIdAsync(id, cancellationToken).ConfigureAwait(false);
+        if (apiKey is null || !apiKey.UserId.Equals(session.Principal.UserId, StringComparison.Ordinal))
+        {
+            return CreateErrorResponse(ShortLinkErrorCodes.NotFound, "API key was not found.");
+        }
+
+        var disabled = await apiKeyRepository.DisableAsync(id, cancellationToken).ConfigureAwait(false);
+        if (!disabled)
+        {
+            return CreateErrorResponse(ShortLinkErrorCodes.NotFound, "API key was not found.");
+        }
+
+        return TypedResults.Ok(new SecurityUserApiKeyDisabledResponse(id, false));
+    }
+
+    private static async Task<Results<Ok<SecurityRolesListResponse>, JsonHttpResult<ShortLinkErrorResponse>>> ListSecurityRolesAsync(
+        IShortenLinkSecurityRoleRepository roleRepository,
+        IShortenLinkAuthorizationService authorizationService,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var authorization = await authorizationService
+            .AuthorizeAsync(httpContext, ShortenLinkPermissions.SecurityAssignmentsManage, cancellationToken)
+            .ConfigureAwait(false);
+        if (!authorization.Succeeded)
+        {
+            return CreateAuthorizationErrorResponse(authorization);
+        }
+
+        var systemRoles = ShortenLinkSystemRoles.PermissionBundles
+            .OrderBy(role => role.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(role => SecurityRoleResponse.System(role.Key, role.Value))
+            .ToList();
+        var customRoles = await roleRepository.ListCustomRolesAsync(cancellationToken).ConfigureAwait(false);
+
+        return TypedResults.Ok(new SecurityRolesListResponse(
+            systemRoles,
+            customRoles.Select(SecurityRoleResponse.Custom).ToList()));
+    }
+
+    private static async Task<Results<Ok<SecurityRoleResponse>, JsonHttpResult<ShortLinkErrorResponse>>> UpsertCustomSecurityRoleAsync(
+        SecurityCustomRoleUpsertRequest request,
+        IShortenLinkSecurityRoleRepository roleRepository,
+        IShortenLinkAuthorizationService authorizationService,
+        TimeProvider timeProvider,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var authorization = await authorizationService
+            .AuthorizeAsync(httpContext, ShortenLinkPermissions.SecurityAssignmentsManage, cancellationToken)
+            .ConfigureAwait(false);
+        if (!authorization.Succeeded)
+        {
+            return CreateAuthorizationErrorResponse(authorization);
+        }
+
+        var validation = ValidateCustomRoleRequest(request);
+        if (validation is not null)
+        {
+            return validation;
+        }
+
+        var role = new ShortenLinkCustomRole(
+            request.Id.Trim(),
+            request.Name.Trim(),
+            NormalizeDistinct(request.Permissions),
+            request.IsEnabled ?? true,
+            timeProvider.GetUtcNow());
+
+        await roleRepository.AddOrUpdateCustomRoleAsync(role, cancellationToken).ConfigureAwait(false);
+        return TypedResults.Ok(SecurityRoleResponse.Custom(role));
+    }
+
+    private static async Task<Results<Ok<SecurityRoleDisabledResponse>, JsonHttpResult<ShortLinkErrorResponse>>> DisableCustomSecurityRoleAsync(
+        string id,
+        IShortenLinkSecurityRoleRepository roleRepository,
+        IShortenLinkAuthorizationService authorizationService,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var authorization = await authorizationService
+            .AuthorizeAsync(httpContext, ShortenLinkPermissions.SecurityAssignmentsManage, cancellationToken)
+            .ConfigureAwait(false);
+        if (!authorization.Succeeded)
+        {
+            return CreateAuthorizationErrorResponse(authorization);
+        }
+
+        if (ShortenLinkSystemRoles.PermissionBundles.ContainsKey(id))
+        {
+            return CreateErrorResponse("system_role_immutable", "System roles cannot be disabled.");
+        }
+
+        var disabled = await roleRepository.DisableCustomRoleAsync(id, cancellationToken).ConfigureAwait(false);
+        if (!disabled)
+        {
+            return CreateErrorResponse(ShortLinkErrorCodes.NotFound, "Custom role was not found.");
+        }
+
+        return TypedResults.Ok(new SecurityRoleDisabledResponse(id, false));
+    }
+
+    private static async Task<Results<Ok<SecurityUsersListResponse>, JsonHttpResult<ShortLinkErrorResponse>>> ListSecurityUsersAsync(
+        IShortenLinkSecurityUserRepository userRepository,
+        IShortenLinkAuthorizationService authorizationService,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var authorization = await authorizationService
+            .AuthorizeAsync(httpContext, ShortenLinkPermissions.SecurityAssignmentsManage, cancellationToken)
+            .ConfigureAwait(false);
+        if (!authorization.Succeeded)
+        {
+            return CreateAuthorizationErrorResponse(authorization);
+        }
+
+        var users = await userRepository.ListAsync(includeHidden: false, cancellationToken).ConfigureAwait(false);
+        return TypedResults.Ok(new SecurityUsersListResponse(
+            users.Select(SecurityUserResponse.FromDomain).ToList()));
+    }
+
+    private static async Task<Results<Ok<SecurityUserResponse>, JsonHttpResult<ShortLinkErrorResponse>>> UpsertSecurityUserAsync(
+        SecurityUserUpsertRequest request,
+        IShortenLinkSecurityUserRepository userRepository,
+        IShortenLinkSecurityRoleRepository roleRepository,
+        IShortenLinkAuthorizationService authorizationService,
+        TimeProvider timeProvider,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var authorization = await authorizationService
+            .AuthorizeAsync(httpContext, ShortenLinkPermissions.SecurityAssignmentsManage, cancellationToken)
+            .ConfigureAwait(false);
+        if (!authorization.Succeeded)
+        {
+            return CreateAuthorizationErrorResponse(authorization);
+        }
+
+        var validation = await ValidateSecurityUserRequestAsync(
+                request,
+                userRepository,
+                roleRepository,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (validation is not null)
+        {
+            return validation;
+        }
+
+        var existing = await userRepository
+            .FindByIdAsync(request.Id.Trim(), cancellationToken)
+            .ConfigureAwait(false);
+        var passwordHash = !string.IsNullOrWhiteSpace(request.Password)
+            ? ShortenLinkSecurityCredentialHasher.HashPassword(request.Password)
+            : existing!.PasswordHash;
+
+        var user = new ShortenLinkSecurityUser(
+            request.Id.Trim(),
+            request.Username.Trim(),
+            request.DisplayName.Trim(),
+            passwordHash,
+            NormalizeDistinct(request.RoleIds),
+            request.IsEnabled ?? true,
+            isHidden: false,
+            isBootstrap: false,
+            existing?.CreatedAt ?? timeProvider.GetUtcNow());
+
+        await userRepository.AddOrUpdateAsync(user, cancellationToken).ConfigureAwait(false);
+        return TypedResults.Ok(SecurityUserResponse.FromDomain(user));
+    }
+
+    private static async Task<Results<Ok<SecurityUserDisabledResponse>, JsonHttpResult<ShortLinkErrorResponse>>> DisableSecurityUserAsync(
+        string id,
+        IShortenLinkSecurityUserRepository userRepository,
+        IShortenLinkAuthorizationService authorizationService,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var authorization = await authorizationService
+            .AuthorizeAsync(httpContext, ShortenLinkPermissions.SecurityAssignmentsManage, cancellationToken)
+            .ConfigureAwait(false);
+        if (!authorization.Succeeded)
+        {
+            return CreateAuthorizationErrorResponse(authorization);
+        }
+
+        var existing = await userRepository.FindByIdAsync(id, cancellationToken).ConfigureAwait(false);
+        if (existing is { IsBootstrap: true })
+        {
+            return CreateErrorResponse("bootstrap_user_immutable", "The bootstrap admin user cannot be disabled.");
+        }
+
+        var disabled = await userRepository.DisableAsync(id, cancellationToken).ConfigureAwait(false);
+        if (!disabled)
+        {
+            return CreateErrorResponse(ShortLinkErrorCodes.NotFound, "Security user was not found.");
+        }
+
+        return TypedResults.Ok(new SecurityUserDisabledResponse(id, false));
+    }
+
     private static async Task<Results<Ok<ShortLinkAdminListResponse>, JsonHttpResult<ShortLinkErrorResponse>>> ListShortLinksAsync(
         IShortLinkService shortLinkService,
         IShortenLinkAuthorizationService authorizationService,
@@ -84,6 +508,10 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
         int? limit,
         int? page,
         string? cursor,
+        string? search,
+        string? status,
+        string? sortBy,
+        string? sortDirection,
         CancellationToken cancellationToken)
     {
         var authorization = await authorizationService
@@ -95,27 +523,49 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
         }
 
         var safeLimit = Math.Clamp(limit ?? 100, 1, 500);
-        if (page is not null)
+        var hasListQuery = page is not null
+            || !string.IsNullOrWhiteSpace(search)
+            || !string.IsNullOrWhiteSpace(status)
+            || !string.IsNullOrWhiteSpace(sortBy)
+            || !string.IsNullOrWhiteSpace(sortDirection);
+        if (hasListQuery)
         {
-            var safePage = Math.Max(page.Value, 1);
-            var totalCount = await shortLinkService.CountAsync(cancellationToken)
-                .ConfigureAwait(false);
-            var numberedPageItems = await shortLinkService.ListRecentPageAsync(
+            if (!TryParseListStatus(status, out var parsedStatus))
+            {
+                return CreateErrorResponse("invalid_filter", "Status filter is invalid.");
+            }
+
+            if (!TryParseListSortBy(sortBy, out var parsedSortBy))
+            {
+                return CreateErrorResponse("invalid_sort", "Sort field is invalid.");
+            }
+
+            if (!TryParseSortDirection(sortDirection, out var parsedSortDirection))
+            {
+                return CreateErrorResponse("invalid_sort_direction", "Sort direction is invalid.");
+            }
+
+            var safePage = Math.Max(page ?? 1, 1);
+            var numberedPage = await shortLinkService.ListPageAsync(
                     (safePage - 1) * safeLimit,
                     safeLimit,
+                    search,
+                    parsedStatus,
+                    parsedSortBy,
+                    parsedSortDirection,
                     cancellationToken)
                 .ConfigureAwait(false);
-            var pageResponse = numberedPageItems
+            var pageResponse = numberedPage.Items
                 .Select(shortLink => ShortLinkAdminListItemResponse.FromDomain(
                     shortLink,
                     BuildShortUrl(shortLink.Code, options.Value, httpContext)))
                 .ToList();
-            var totalPages = Math.Max(1, (int)Math.Ceiling(totalCount / (double)safeLimit));
+            var totalPages = Math.Max(1, (int)Math.Ceiling(numberedPage.TotalCount / (double)safeLimit));
 
             return TypedResults.Ok(new ShortLinkAdminListResponse(
                 pageResponse,
                 null,
-                totalCount,
+                numberedPage.TotalCount,
                 safePage,
                 safeLimit,
                 totalPages));
@@ -142,6 +592,93 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
         return TypedResults.Ok(new ShortLinkAdminListResponse(response, nextCursor));
     }
 
+    private static bool TryParseListStatus(string? value, out ShortLinkListStatus status)
+    {
+        status = ShortLinkListStatus.All;
+        if (string.IsNullOrWhiteSpace(value) || value.Equals("all", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (value.Equals("active", StringComparison.OrdinalIgnoreCase))
+        {
+            status = ShortLinkListStatus.Active;
+            return true;
+        }
+
+        if (value.Equals("inactive", StringComparison.OrdinalIgnoreCase))
+        {
+            status = ShortLinkListStatus.Inactive;
+            return true;
+        }
+
+        if (value.Equals("expired", StringComparison.OrdinalIgnoreCase))
+        {
+            status = ShortLinkListStatus.Expired;
+            return true;
+        }
+
+        if (value.Equals("expiring-soon", StringComparison.OrdinalIgnoreCase))
+        {
+            status = ShortLinkListStatus.ExpiringSoon;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryParseListSortBy(string? value, out ShortLinkListSortBy sortBy)
+    {
+        sortBy = ShortLinkListSortBy.Created;
+        if (string.IsNullOrWhiteSpace(value) || value.Equals("created", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (value.Equals("expiry", StringComparison.OrdinalIgnoreCase))
+        {
+            sortBy = ShortLinkListSortBy.Expiry;
+            return true;
+        }
+
+        if (value.Equals("destination", StringComparison.OrdinalIgnoreCase))
+        {
+            sortBy = ShortLinkListSortBy.Destination;
+            return true;
+        }
+
+        if (value.Equals("code", StringComparison.OrdinalIgnoreCase))
+        {
+            sortBy = ShortLinkListSortBy.Code;
+            return true;
+        }
+
+        if (value.Equals("status", StringComparison.OrdinalIgnoreCase))
+        {
+            sortBy = ShortLinkListSortBy.Status;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryParseSortDirection(string? value, out ShortLinkSortDirection sortDirection)
+    {
+        sortDirection = ShortLinkSortDirection.Desc;
+        if (string.IsNullOrWhiteSpace(value) || value.Equals("desc", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (value.Equals("asc", StringComparison.OrdinalIgnoreCase))
+        {
+            sortDirection = ShortLinkSortDirection.Asc;
+            return true;
+        }
+
+        return false;
+    }
+
     private static async Task<Results<Created<ShortLinkCreatedResponse>, JsonHttpResult<ShortLinkErrorResponse>>> CreateShortLinkAsync(
         ShortLinkCreateRequest request,
         IShortLinkService shortLinkService,
@@ -166,7 +703,10 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
 
         if (!result.Succeeded || result.ShortLink is null)
         {
-            return CreateErrorResponse(result.ErrorCode, result.ErrorMessage);
+            return CreateErrorResponse(
+                result.ErrorCode,
+                result.ErrorMessage,
+                GetShortLinkValidationFieldErrors(result.ErrorCode, result.ErrorMessage));
         }
 
         var response = ShortLinkCreatedResponse.FromDomain(
@@ -333,7 +873,10 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
             cancellationToken).ConfigureAwait(false);
         if (!result.Succeeded || result.ShortLink is null)
         {
-            return CreateErrorResponse(result.ErrorCode, result.ErrorMessage);
+            return CreateErrorResponse(
+                result.ErrorCode,
+                result.ErrorMessage,
+                GetShortLinkValidationFieldErrors(result.ErrorCode, result.ErrorMessage));
         }
 
         return TypedResults.Ok(ShortLinkAdminListItemResponse.FromDomain(
@@ -447,11 +990,13 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
 
     private static JsonHttpResult<ShortLinkErrorResponse> CreateErrorResponse(
         string? errorCode,
-        string? errorMessage)
+        string? errorMessage,
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? fieldErrors = null)
     {
         var response = new ShortLinkErrorResponse(
             errorCode ?? "unknown_error",
-            errorMessage ?? "An unexpected short-link error occurred.");
+            errorMessage ?? "An unexpected short-link error occurred.",
+            fieldErrors);
 
         return TypedResults.Json(response, statusCode: GetStatusCode(response.ErrorCode));
     }
@@ -461,7 +1006,8 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
     {
         var response = new ShortLinkErrorResponse(
             authorization.ErrorCode ?? "forbidden",
-            authorization.ErrorMessage ?? "The request is not authorized.");
+            authorization.ErrorMessage ?? "The request is not authorized.",
+            null);
 
         return TypedResults.Json(
             response,
@@ -473,6 +1019,43 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
     private static IResult CreateErrorResult(string? errorCode, string? errorMessage) =>
         CreateErrorResponse(errorCode, errorMessage);
 
+    private static JsonHttpResult<ShortLinkErrorResponse> CreateFieldErrorResponse(
+        string errorCode,
+        string errorMessage,
+        string field) =>
+        CreateErrorResponse(
+            errorCode,
+            errorMessage,
+            CreateFieldErrors(new[] { (field, errorMessage) }));
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<string>>? GetShortLinkValidationFieldErrors(
+        string? errorCode,
+        string? errorMessage)
+    {
+        var field = errorCode switch
+        {
+            ShortLinkErrorCodes.InvalidUrl => "originalUrl",
+            ShortLinkErrorCodes.InvalidExpiration => "expiredAtUtc",
+            _ => null
+        };
+
+        return field is null
+            ? null
+            : CreateFieldErrors(new[] { (field, errorMessage ?? "The value is invalid.") });
+    }
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<string>> CreateFieldErrors(
+        IEnumerable<(string Field, string Message)> errors) =>
+        errors
+            .GroupBy(static error => error.Field, StringComparer.Ordinal)
+            .ToDictionary(
+                static group => group.Key,
+                static group => (IReadOnlyList<string>)group
+                    .Select(static error => error.Message)
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList(),
+                StringComparer.Ordinal);
+
     private static int GetStatusCode(string errorCode) =>
         errorCode switch
         {
@@ -480,11 +1063,21 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
             ShortLinkErrorCodes.InvalidExpiration => StatusCodes.Status400BadRequest,
             ShortLinkErrorCodes.InvalidUrl => StatusCodes.Status400BadRequest,
             ShortLinkErrorCodes.NotFound => StatusCodes.Status404NotFound,
+            "invalid_api_key" => StatusCodes.Status400BadRequest,
             "invalid_credential_hash" => StatusCodes.Status400BadRequest,
             "invalid_cursor" => StatusCodes.Status400BadRequest,
+            "invalid_filter" => StatusCodes.Status400BadRequest,
+            "invalid_login" => StatusCodes.Status401Unauthorized,
             "invalid_permission" => StatusCodes.Status400BadRequest,
             "invalid_role" => StatusCodes.Status400BadRequest,
+            "invalid_sort" => StatusCodes.Status400BadRequest,
+            "invalid_sort_direction" => StatusCodes.Status400BadRequest,
+            "invalid_security_role" => StatusCodes.Status400BadRequest,
             "invalid_security_assignment" => StatusCodes.Status400BadRequest,
+            "invalid_security_user" => StatusCodes.Status400BadRequest,
+            "system_role_immutable" => StatusCodes.Status400BadRequest,
+            "bootstrap_user_immutable" => StatusCodes.Status400BadRequest,
+            "unauthorized" => StatusCodes.Status401Unauthorized,
             ShortLinkErrorCodes.Expired => StatusCodes.Status410Gone,
             ShortLinkErrorCodes.Inactive => StatusCodes.Status410Gone,
             _ => StatusCodes.Status500InternalServerError
@@ -557,19 +1150,19 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
     {
         if (string.IsNullOrWhiteSpace(request.CredentialKey))
         {
-            return CreateErrorResponse("invalid_security_assignment", "Credential key is required.");
+            return CreateFieldErrorResponse("invalid_security_assignment", "Credential key is required.", "credentialKey");
         }
 
         if (string.IsNullOrWhiteSpace(request.Name))
         {
-            return CreateErrorResponse("invalid_security_assignment", "Assignment name is required.");
+            return CreateFieldErrorResponse("invalid_security_assignment", "Assignment name is required.", "name");
         }
 
         foreach (var role in NormalizeDistinct(request.Roles))
         {
             if (!ShortenLinkRoles.PermissionBundles.ContainsKey(role))
             {
-                return CreateErrorResponse("invalid_role", $"Unknown system role '{role}'.");
+                return CreateFieldErrorResponse("invalid_role", $"Unknown system role '{role}'.", "roles");
             }
         }
 
@@ -577,7 +1170,95 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
         {
             if (!ShortenLinkPermissions.All.Contains(permission))
             {
-                return CreateErrorResponse("invalid_permission", $"Unknown permission '{permission}'.");
+                return CreateFieldErrorResponse("invalid_permission", $"Unknown permission '{permission}'.", "permissions");
+            }
+        }
+
+        return null;
+    }
+
+    private static JsonHttpResult<ShortLinkErrorResponse>? ValidateCustomRoleRequest(
+        SecurityCustomRoleUpsertRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Id))
+        {
+            return CreateFieldErrorResponse("invalid_security_role", "Custom role id is required.", "id");
+        }
+
+        if (ShortenLinkSystemRoles.PermissionBundles.ContainsKey(request.Id.Trim()))
+        {
+            return CreateErrorResponse("system_role_immutable", "System roles cannot be created or updated through custom role APIs.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Name))
+        {
+            return CreateFieldErrorResponse("invalid_security_role", "Custom role name is required.", "name");
+        }
+
+        foreach (var permission in NormalizeDistinct(request.Permissions))
+        {
+            if (!ShortenLinkPermissions.All.Contains(permission))
+            {
+                return CreateFieldErrorResponse("invalid_permission", $"Unknown permission '{permission}'.", "permissions");
+            }
+        }
+
+        return null;
+    }
+
+    private static async Task<JsonHttpResult<ShortLinkErrorResponse>?> ValidateSecurityUserRequestAsync(
+        SecurityUserUpsertRequest request,
+        IShortenLinkSecurityUserRepository userRepository,
+        IShortenLinkSecurityRoleRepository roleRepository,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Id))
+        {
+            return CreateFieldErrorResponse("invalid_security_user", "User id is required.", "id");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Username))
+        {
+            return CreateFieldErrorResponse("invalid_security_user", "Username is required.", "username");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.DisplayName))
+        {
+            return CreateFieldErrorResponse("invalid_security_user", "Display name is required.", "displayName");
+        }
+
+        var existing = await userRepository
+            .FindByIdAsync(request.Id.Trim(), cancellationToken)
+            .ConfigureAwait(false);
+        if (existing is { IsBootstrap: true })
+        {
+            return CreateErrorResponse("bootstrap_user_immutable", "The bootstrap admin user cannot be updated through user management APIs.");
+        }
+
+        if (existing is null && string.IsNullOrWhiteSpace(request.Password))
+        {
+            return CreateFieldErrorResponse("invalid_security_user", "Password is required when creating a user.", "password");
+        }
+
+        var usernameOwner = await userRepository
+            .FindByUsernameAsync(request.Username.Trim(), cancellationToken)
+            .ConfigureAwait(false);
+        if (usernameOwner is not null && !usernameOwner.Id.Equals(request.Id.Trim(), StringComparison.Ordinal))
+        {
+            return CreateFieldErrorResponse("invalid_security_user", "Username is already assigned to another user.", "username");
+        }
+
+        foreach (var roleId in NormalizeDistinct(request.RoleIds))
+        {
+            if (ShortenLinkSystemRoles.PermissionBundles.ContainsKey(roleId))
+            {
+                continue;
+            }
+
+            var customRole = await roleRepository.FindCustomRoleAsync(roleId, cancellationToken).ConfigureAwait(false);
+            if (customRole is null)
+            {
+                return CreateFieldErrorResponse("invalid_role", $"Unknown role '{roleId}'.", "roleIds");
             }
         }
 
@@ -591,11 +1272,11 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
             .Distinct(StringComparer.Ordinal)
             .ToList();
 
-    private static string HashCredential(string apiKey)
-    {
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(apiKey));
-        return Convert.ToHexString(hash).ToLowerInvariant();
-    }
+    private static string HashCredential(string apiKey) =>
+        ShortenLinkSecurityCredentialHasher.HashApiKey(apiKey);
+
+    private static string CreateRawUserApiKey() =>
+        $"slk_{Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant()}";
 
     private static bool IsValidCredentialHash(string credentialKeyHash) =>
         credentialKeyHash.Length == 64
@@ -702,6 +1383,144 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
         IReadOnlyList<string>? Permissions,
         bool? IsEnabled);
 
+    public sealed record SecurityLoginRequest(
+        string Username,
+        string Password);
+
+    public sealed record SecurityLoginResponse(
+        string Token,
+        SecurityCurrentUserResponse User);
+
+    public sealed record SecurityCurrentUserResponse(
+        string UserId,
+        string Username,
+        string DisplayName,
+        IReadOnlyList<string> Roles,
+        IReadOnlyList<string> Permissions,
+        DateTimeOffset IssuedAtUtc)
+    {
+        public static SecurityCurrentUserResponse FromPrincipal(ShortenLinkUserSessionPrincipal principal) =>
+            new(
+                principal.UserId,
+                principal.Username,
+                principal.DisplayName,
+                principal.Roles,
+                principal.Permissions,
+                principal.IssuedAtUtc);
+    }
+
+    public sealed record SecurityUserApiKeyCreateRequest(
+        string DisplayName);
+
+    public sealed record SecurityUserApiKeyRenameRequest(
+        string DisplayName);
+
+    public sealed record SecurityUserApiKeysListResponse(
+        IReadOnlyList<SecurityUserApiKeyResponse> Items);
+
+    public sealed record SecurityUserApiKeyCreatedResponse(
+        SecurityUserApiKeyResponse ApiKey,
+        string RawApiKey);
+
+    public sealed record SecurityUserApiKeyResponse(
+        string Id,
+        string DisplayName,
+        bool IsEnabled,
+        DateTimeOffset CreatedAtUtc)
+    {
+        public static SecurityUserApiKeyResponse FromDomain(ShortenLinkUserApiKey apiKey) =>
+            new(
+                apiKey.Id,
+                apiKey.DisplayName,
+                apiKey.IsEnabled,
+                apiKey.CreatedAt);
+    }
+
+    public sealed record SecurityUserApiKeyDisabledResponse(
+        string Id,
+        bool IsEnabled);
+
+    public sealed record SecurityRolesListResponse(
+        IReadOnlyList<SecurityRoleResponse> SystemRoles,
+        IReadOnlyList<SecurityRoleResponse> CustomRoles);
+
+    public sealed record SecurityRoleResponse(
+        string Id,
+        string Name,
+        IReadOnlyList<string> Permissions,
+        bool IsSystem,
+        bool IsEnabled,
+        bool CanDelete,
+        DateTimeOffset? CreatedAtUtc)
+    {
+        public static SecurityRoleResponse System(string id, IEnumerable<string> permissions) =>
+            new(
+                id,
+                id,
+                permissions.OrderBy(static permission => permission, StringComparer.Ordinal).ToList(),
+                IsSystem: true,
+                IsEnabled: true,
+                CanDelete: false,
+                CreatedAtUtc: null);
+
+        public static SecurityRoleResponse Custom(ShortenLinkCustomRole role) =>
+            new(
+                role.Id,
+                role.Name,
+                role.Permissions,
+                IsSystem: false,
+                role.IsEnabled,
+                CanDelete: true,
+                role.CreatedAt);
+    }
+
+    public sealed record SecurityCustomRoleUpsertRequest(
+        string Id,
+        string Name,
+        IReadOnlyList<string>? Permissions,
+        bool? IsEnabled);
+
+    public sealed record SecurityRoleDisabledResponse(
+        string Id,
+        bool IsEnabled);
+
+    public sealed record SecurityUsersListResponse(
+        IReadOnlyList<SecurityUserResponse> Items);
+
+    public sealed record SecurityUserResponse(
+        string Id,
+        string Username,
+        string DisplayName,
+        IReadOnlyList<string> RoleIds,
+        bool IsEnabled,
+        bool IsHidden,
+        bool IsBootstrap,
+        DateTimeOffset CreatedAtUtc)
+    {
+        public static SecurityUserResponse FromDomain(ShortenLinkSecurityUser user) =>
+            new(
+                user.Id,
+                user.Username,
+                user.DisplayName,
+                user.RoleIds,
+                user.IsEnabled,
+                user.IsHidden,
+                user.IsBootstrap,
+                user.CreatedAt);
+    }
+
+    public sealed record SecurityUserUpsertRequest(
+        string Id,
+        string Username,
+        string DisplayName,
+        string? Password,
+        IReadOnlyList<string>? RoleIds,
+        bool? IsEnabled);
+
+    public sealed record SecurityUserDisabledResponse(
+        string Id,
+        bool IsEnabled);
+
     public sealed record SecurityAssignmentsListResponse(
         IReadOnlyList<SecurityAssignmentResponse> Items);
 
@@ -731,5 +1550,9 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
 
     public sealed record ShortLinkDeletedResponse(string Code);
 
-    public sealed record ShortLinkErrorResponse(string ErrorCode, string Message);
+    public sealed record ShortLinkErrorResponse(
+        string ErrorCode,
+        string Message,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? FieldErrors = null);
 }

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ShortenLink.Core.Domain;
 using ShortenLink.Core.Repositories;
+using ShortenLink.Core.Services;
 using ShortenLink.Infrastructure.Persistence;
 
 namespace ShortenLink.Infrastructure.Repositories;
@@ -80,6 +81,34 @@ public sealed class EfCoreShortLinkRepository : IShortLinkRepository
     public Task<int> CountAsync(CancellationToken cancellationToken = default) =>
         dbContext.ShortLinks.CountAsync(cancellationToken);
 
+    public async Task<ShortLinkListPage> ListPageAsync(
+        int skip,
+        int limit,
+        ShortLinkListQuery query,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+
+        var safeSkip = Math.Max(skip, 0);
+        var safeLimit = Math.Clamp(limit, 1, 500);
+        var records = await dbContext.ShortLinks
+            .AsNoTracking()
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var filtered = records
+            .Where(record => MatchesSearch(record, query.Search))
+            .Where(record => MatchesStatus(record, query))
+            .ToList();
+        var ordered = ApplySort(filtered, query)
+            .Skip(safeSkip)
+            .Take(safeLimit)
+            .Select(record => record.ToDomain())
+            .ToList();
+
+        return new ShortLinkListPage(ordered, filtered.Count);
+    }
+
     public async Task<ShortLink?> FindByCodeAsync(
         string code,
         CancellationToken cancellationToken = default)
@@ -90,6 +119,82 @@ public sealed class EfCoreShortLinkRepository : IShortLinkRepository
             .ConfigureAwait(false);
 
         return record?.ToDomain();
+    }
+
+    private static bool MatchesSearch(ShortLinkRecord record, string? search)
+    {
+        if (string.IsNullOrWhiteSpace(search))
+        {
+            return true;
+        }
+
+        return record.Code.Contains(search, StringComparison.OrdinalIgnoreCase)
+            || record.OriginalUrl.Contains(search, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool MatchesStatus(ShortLinkRecord record, ShortLinkListQuery query) =>
+        query.Status switch
+        {
+            ShortLinkListStatus.Active => record.IsActive && !IsExpired(record, query.Now),
+            ShortLinkListStatus.Inactive => !record.IsActive,
+            ShortLinkListStatus.Expired => record.IsActive && IsExpired(record, query.Now),
+            ShortLinkListStatus.ExpiringSoon => record.IsActive
+                && !IsExpired(record, query.Now)
+                && record.ExpiresAt is not null
+                && record.ExpiresAt <= query.ExpiringSoonBefore,
+            _ => true
+        };
+
+    private static IEnumerable<ShortLinkRecord> ApplySort(
+        IEnumerable<ShortLinkRecord> records,
+        ShortLinkListQuery query)
+    {
+        return query.SortBy switch
+        {
+            ShortLinkListSortBy.Expiry => ApplyDirection(
+                records,
+                query.SortDirection,
+                record => record.ExpiresAt ?? DateTimeOffset.MaxValue),
+            ShortLinkListSortBy.Destination => ApplyDirection(
+                records,
+                query.SortDirection,
+                record => record.OriginalUrl),
+            ShortLinkListSortBy.Code => ApplyDirection(
+                records,
+                query.SortDirection,
+                record => record.Code),
+            ShortLinkListSortBy.Status => ApplyDirection(
+                records,
+                query.SortDirection,
+                record => GetStatusRank(record, query.Now)),
+            _ => ApplyDirection(
+                records,
+                query.SortDirection,
+                record => record.CreatedAt)
+        };
+    }
+
+    private static IEnumerable<ShortLinkRecord> ApplyDirection<TKey>(
+        IEnumerable<ShortLinkRecord> records,
+        ShortLinkSortDirection direction,
+        Func<ShortLinkRecord, TKey> keySelector)
+    {
+        return direction == ShortLinkSortDirection.Asc
+            ? records.OrderBy(keySelector).ThenBy(record => record.Code, StringComparer.Ordinal)
+            : records.OrderByDescending(keySelector).ThenBy(record => record.Code, StringComparer.Ordinal);
+    }
+
+    private static bool IsExpired(ShortLinkRecord record, DateTimeOffset now) =>
+        record.ExpiresAt is not null && record.ExpiresAt <= now;
+
+    private static int GetStatusRank(ShortLinkRecord record, DateTimeOffset now)
+    {
+        if (!record.IsActive)
+        {
+            return 2;
+        }
+
+        return IsExpired(record, now) ? 1 : 0;
     }
 
     public Task<bool> ExistsByCodeAsync(

@@ -1,7 +1,15 @@
 import { startTransition, useEffect, useState } from "react";
 import { CreateShortLinkPage } from "../features/short-links/pages/CreateShortLinkPage";
-import { getAdminPermissionState } from "../features/short-links/api/adminSecurity";
-import { SecurityAssignmentsPage } from "../features/short-links/pages/SecurityAssignmentsPage";
+import {
+  clearStoredSession,
+  getAdminPermissionState,
+  getStoredCurrentUser,
+  getStoredSessionToken,
+  storeSession
+} from "../features/short-links/api/adminSecurity";
+import { getCurrentSecurityUser } from "../features/short-links/api/shortLinksApi";
+import { LoginPage } from "../features/short-links/pages/LoginPage";
+import { SecurityManagementPage } from "../features/short-links/pages/SecurityManagementPage";
 import { ShortLinkAdminPage } from "../features/short-links/pages/ShortLinkAdminPage";
 import { StatusPage } from "../features/short-links/pages/StatusPage";
 import { ShortLinkDetailPage } from "../features/short-links/pages/ShortLinkDetailPage";
@@ -16,7 +24,41 @@ export function App() {
   const [recentLink, setRecentLink] = useState<CreatedShortLink | null>(null);
   const [hasAdminEditChanges, setHasAdminEditChanges] = useState(false);
   const [pendingNavigationPath, setPendingNavigationPath] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState(() => getStoredCurrentUser());
   const adminPermissions = getAdminPermissionState();
+
+  useEffect(() => {
+    const handleAuthChanged = () => {
+      setCurrentUser(getStoredCurrentUser());
+    };
+
+    window.addEventListener("shortenlink-auth-changed", handleAuthChanged);
+    return () => window.removeEventListener("shortenlink-auth-changed", handleAuthChanged);
+  }, []);
+
+  useEffect(() => {
+    const token = getStoredSessionToken();
+    if (!token) {
+      return;
+    }
+
+    let isCurrent = true;
+    void getCurrentSecurityUser()
+      .then((user) => {
+        if (isCurrent) {
+          storeSession(token, user);
+        }
+      })
+      .catch(() => {
+        if (isCurrent) {
+          clearStoredSession();
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
 
   useEffect(() => {
     const handlePopState = () => {
@@ -73,6 +115,8 @@ export function App() {
       ? "Admin"
       : route.kind === "security"
         ? "Security"
+      : route.kind === "login"
+        ? "Sign in"
       : route.kind === "detail"
         ? "Link detail"
         : route.kind === "status"
@@ -84,6 +128,8 @@ export function App() {
       ? "Manage generated random short links"
       : route.kind === "security"
         ? "Manage user, role, and permission assignments"
+      : route.kind === "login"
+        ? "Use your ShortenLink identity session"
       : route.kind === "detail"
         ? "Inspect and retire one generated link"
         : route.kind === "status"
@@ -145,7 +191,7 @@ export function App() {
             <span className="nav-glyph" aria-hidden="true" />
             Admin URLs
           </Button>
-          {adminPermissions.canManageSecurityAssignments ? (
+          {currentUser || adminPermissions.canManageSecurityAssignments ? (
             <Button
               className="sidebar-nav-button"
               aria-current={route.kind === "security" ? "page" : undefined}
@@ -158,6 +204,33 @@ export function App() {
           ) : null}
         </nav>
 
+        <div className="session-panel">
+          {currentUser ? (
+            <>
+              <p>{currentUser.displayName || currentUser.username}</p>
+              <code>{currentUser.roles.join(", ") || "No role"}</code>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  clearStoredSession();
+                  navigate("/login");
+                }}
+              >
+                Sign out
+              </Button>
+            </>
+          ) : (
+            <Button
+              className="sidebar-nav-button"
+              aria-current={route.kind === "login" ? "page" : undefined}
+              variant="ghost"
+              onClick={() => navigate("/login")}
+            >
+              <span className="nav-glyph" aria-hidden="true" />
+              Sign in
+            </Button>
+          )}
+        </div>
       </aside>
 
       <main className="app-main">
@@ -182,7 +255,11 @@ export function App() {
         ) : null}
 
         {route.kind === "security" ? (
-          <SecurityAssignmentsPage />
+          <SecurityManagementPage />
+        ) : null}
+
+        {route.kind === "login" ? (
+          <LoginPage onSignedIn={() => navigate("/security")} />
         ) : null}
 
         {route.kind === "detail" ? (

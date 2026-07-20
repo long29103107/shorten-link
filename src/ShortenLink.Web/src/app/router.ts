@@ -13,6 +13,10 @@ export function parseRoute(pathname: string): AppRoute {
     return { kind: "security" };
   }
 
+  if (pathname === "/login") {
+    return { kind: "login" };
+  }
+
   if (pathname === "/unauthorized") {
     return { kind: "status", statusCode: 401 };
   }

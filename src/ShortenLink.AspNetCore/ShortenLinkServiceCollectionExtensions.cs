@@ -62,6 +62,9 @@ public static class ShortenLinkServiceCollectionExtensions
             .Validate(
                 static options => !options.Security.Enabled || HasValidSecurityOptions(options.Security),
                 "ShortenLink:Security requires HeaderName and at least one API key when enabled.")
+            .Validate(
+                static options => options.Security.SessionTokenTtlMinutes > 0,
+                "ShortenLink:Security:SessionTokenTtlMinutes must be greater than 0.")
             .ValidateOnStart();
 
         services.AddDbContext<ShortLinkDbContext>((serviceProvider, options) =>
@@ -84,7 +87,11 @@ public static class ShortenLinkServiceCollectionExtensions
         services.TryAddScoped<IShortLinkRepository, EfCoreShortLinkRepository>();
         services.TryAddScoped<IShortLinkClickRepository, EfCoreShortLinkClickRepository>();
         services.TryAddScoped<IShortenLinkSecurityAssignmentRepository, EfCoreShortenLinkSecurityAssignmentRepository>();
+        services.TryAddScoped<IShortenLinkSecurityRoleRepository, EfCoreShortenLinkSecurityRoleRepository>();
+        services.TryAddScoped<IShortenLinkSecurityUserRepository, EfCoreShortenLinkSecurityUserRepository>();
+        services.TryAddScoped<IShortenLinkUserApiKeyRepository, EfCoreShortenLinkUserApiKeyRepository>();
         services.TryAddScoped<IShortLinkService, ShortLinkService>();
+        services.TryAddScoped<IShortenLinkUserSessionService, ShortenLinkUserSessionService>();
         services.TryAddScoped<IShortenLinkAuthorizationService, ShortenLinkAuthorizationService>();
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<IHostedService, ShortLinkDatabaseInitializationService>());

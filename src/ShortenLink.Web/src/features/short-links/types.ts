@@ -2,6 +2,7 @@ export type AppRoute =
   | { kind: "home" }
   | { kind: "admin" }
   | { kind: "security" }
+  | { kind: "login" }
   | { kind: "detail"; code: string }
   | { kind: "status"; statusCode: HttpStatusCode };
 
@@ -104,6 +105,110 @@ export type SecurityAssignmentDisabled = {
   isEnabled: boolean;
 };
 
+export type ShortLinkStatusFilter = "all" | "active" | "inactive" | "expired" | "expiring-soon";
+
+export type ShortLinkSortField = "created" | "expiry" | "destination" | "code" | "status";
+
+export type ShortLinkSortDirection = "asc" | "desc";
+
+export type ShortLinkDiscoveryQuery = {
+  search: string;
+  status: ShortLinkStatusFilter;
+  sortBy: ShortLinkSortField;
+  sortDirection: ShortLinkSortDirection;
+};
+
+export type SecurityCurrentUser = {
+  userId: string;
+  username: string;
+  displayName: string;
+  roles: string[];
+  permissions: string[];
+  issuedAtUtc: string;
+};
+
+export type SecurityLoginResponse = {
+  token: string;
+  user: SecurityCurrentUser;
+};
+
+export type SecurityRole = {
+  id: string;
+  name: string;
+  permissions: string[];
+  isSystem: boolean;
+  isEnabled: boolean;
+  canDelete: boolean;
+  createdAtUtc: string | null;
+};
+
+export type SecurityRolesList = {
+  systemRoles: SecurityRole[];
+  customRoles: SecurityRole[];
+};
+
+export type SecurityCustomRoleUpsertRequest = {
+  id: string;
+  name: string;
+  permissions: string[];
+  isEnabled: boolean;
+};
+
+export type SecurityRoleDisabled = {
+  id: string;
+  isEnabled: boolean;
+};
+
+export type SecurityUser = {
+  id: string;
+  username: string;
+  displayName: string;
+  roleIds: string[];
+  isEnabled: boolean;
+  isHidden: boolean;
+  isBootstrap: boolean;
+  createdAtUtc: string;
+};
+
+export type SecurityUsersList = {
+  items: SecurityUser[];
+};
+
+export type SecurityUserUpsertRequest = {
+  id: string;
+  username: string;
+  displayName: string;
+  password: string | null;
+  roleIds: string[];
+  isEnabled: boolean;
+};
+
+export type SecurityUserDisabled = {
+  id: string;
+  isEnabled: boolean;
+};
+
+export type SecurityUserApiKey = {
+  id: string;
+  displayName: string;
+  isEnabled: boolean;
+  createdAtUtc: string;
+};
+
+export type SecurityUserApiKeysList = {
+  items: SecurityUserApiKey[];
+};
+
+export type SecurityUserApiKeyCreated = {
+  apiKey: SecurityUserApiKey;
+  rawApiKey: string;
+};
+
+export type SecurityUserApiKeyDisabled = {
+  id: string;
+  isEnabled: boolean;
+};
+
 export type ApiErrorPayload = {
   errorCode: string;
   message: string;
@@ -145,6 +250,18 @@ export function toFriendlyErrorMessage(errorCode: string, fallbackMessage: strin
       return "Complete the security assignment fields.";
     case "invalid_credential_hash":
       return "The selected credential hash is invalid.";
+    case "invalid_login":
+      return "Username or password is invalid.";
+    case "invalid_api_key":
+      return "Complete the API key fields.";
+    case "invalid_security_role":
+      return "Complete the custom role fields.";
+    case "invalid_security_user":
+      return "Complete the user fields.";
+    case "system_role_immutable":
+      return "System roles cannot be changed.";
+    case "bootstrap_user_immutable":
+      return "The bootstrap admin user cannot be changed here.";
     default:
       return fallbackMessage;
   }

@@ -15,6 +15,15 @@ public interface IShortLinkService
 
     Task<int> CountAsync(CancellationToken cancellationToken = default);
 
+    Task<ShortLinkListPage> ListPageAsync(
+        int skip,
+        int limit,
+        string? search,
+        ShortLinkListStatus status,
+        ShortLinkListSortBy sortBy,
+        ShortLinkSortDirection sortDirection,
+        CancellationToken cancellationToken = default);
+
     Task<CreateShortLinkResult> CreateAsync(
         CreateShortLinkRequest request,
         CancellationToken cancellationToken = default);

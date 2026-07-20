@@ -41,6 +41,31 @@ public sealed class ShortLinkService : IShortLinkService
     public Task<int> CountAsync(CancellationToken cancellationToken = default) =>
         repository.CountAsync(cancellationToken);
 
+    public Task<ShortLinkListPage> ListPageAsync(
+        int skip,
+        int limit,
+        string? search,
+        ShortLinkListStatus status,
+        ShortLinkListSortBy sortBy,
+        ShortLinkSortDirection sortDirection,
+        CancellationToken cancellationToken = default)
+    {
+        var now = timeProvider.GetUtcNow();
+        var query = new ShortLinkListQuery(
+            string.IsNullOrWhiteSpace(search) ? null : search.Trim(),
+            status,
+            sortBy,
+            sortDirection,
+            now,
+            now.AddDays(7));
+
+        return repository.ListPageAsync(
+            Math.Max(skip, 0),
+            Math.Clamp(limit, 1, 500),
+            query,
+            cancellationToken);
+    }
+
     public async Task<CreateShortLinkResult> CreateAsync(
         CreateShortLinkRequest request,
         CancellationToken cancellationToken = default)

@@ -10,7 +10,7 @@ import {
   updateShortLink
 } from "../api/shortLinksApi";
 import { getAdminPermissionState } from "../api/adminSecurity";
-import type { ShortLinkAdminItem, ShortLinkAnalytics } from "../types";
+import type { ShortLinkAdminItem, ShortLinkAnalytics, ShortLinkDiscoveryQuery } from "../types";
 import { formatDateTime, toFriendlyErrorMessage } from "../types";
 import { Badge } from "../../../shared/components/ui/badge";
 import { Button } from "../../../shared/components/ui/button";
@@ -19,6 +19,11 @@ import { ConfirmDialog } from "../../../shared/components/ConfirmDialog";
 import { EmptyState } from "../../../shared/components/EmptyState";
 import { TableSkeleton } from "../../../shared/components/TableSkeleton";
 import { showToast } from "../../../shared/toast";
+import {
+  createRecoveryNotice,
+  shouldPreserveMutationContext,
+  type RecoveryNotice
+} from "../../../shared/api/recovery";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,6 +42,12 @@ import {
 } from "../../../shared/components/ui/table";
 import { useClickOutside } from "../../../shared/hooks/useClickOutside";
 import { ExpiryQuickPicks } from "../components/ExpiryQuickPicks";
+import {
+  defaultShortLinkDiscoveryQuery,
+  createShortLinkDiscoveryChange,
+  hasShortLinkDiscoveryCriteria,
+  ShortLinkDiscoveryToolbar
+} from "../components/ShortLinkDiscoveryToolbar";
 
 type ShortLinkAdminPageProps = {
   onDirtyChange?: (isDirty: boolean) => void;
@@ -57,7 +68,8 @@ type EditorFieldErrors = {
 
 export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
   const [links, setLinks] = useState<ShortLinkAdminItem[]>([]);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [listFailure, setListFailure] = useState<(RecoveryNotice & { pageNumber: number }) | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [busyCode, setBusyCode] = useState<string | null>(null);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
@@ -69,6 +81,7 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
   const [editForm, setEditForm] = useState({ originalUrl: "", expiredAtLocal: "" });
   const [initialEditForm, setInitialEditForm] = useState({ originalUrl: "", expiredAtLocal: "" });
   const [fieldErrors, setFieldErrors] = useState<EditorFieldErrors>({});
+  const [editorRequestError, setEditorRequestError] = useState<string | null>(null);
   const [tooltip, setTooltip] = useState<{ text: string; x: number; y: number } | null>(null);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [selectedCodes, setSelectedCodes] = useState<Set<string>>(() => new Set());
@@ -76,10 +89,14 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
   const [pageNumber, setPageNumber] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
+  const [discoveryQuery, setDiscoveryQuery] = useState<ShortLinkDiscoveryQuery>(
+    defaultShortLinkDiscoveryQuery
+  );
   const [isPageSizeMenuOpen, setIsPageSizeMenuOpen] = useState(false);
   const [analyticsCode, setAnalyticsCode] = useState<string | null>(null);
   const [analyticsData, setAnalyticsData] = useState<ShortLinkAnalytics | null>(null);
   const [analyticsError, setAnalyticsError] = useState<string | null>(null);
+  const [isAnalyticsRetryable, setIsAnalyticsRetryable] = useState(false);
   const [isAnalyticsLoading, setIsAnalyticsLoading] = useState(false);
   const copyFeedbackTimeoutRef = useRef<number | null>(null);
   const pageSizeMenuRef = useRef<HTMLLabelElement | null>(null);
@@ -93,7 +110,7 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
   const canBulkActivate = adminPermissions.canActivate && selectedLinks.some((link) => !link.isActive);
   const canBulkDelete = adminPermissions.canDelete;
   const hasBulkActions = canBulkDeactivate || canBulkActivate || canBulkDelete;
-  const shouldShowList = !isLoading && !errorMessage && links.length > 0;
+  const shouldShowList = !isLoading && links.length > 0;
   const editingLink = editingCode
     ? links.find((link) => link.code === editingCode) ?? null
     : null;
@@ -104,25 +121,23 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
 
   const loadLinks = async (nextPageNumber = pageNumber) => {
     setIsLoading(true);
-    setErrorMessage(null);
+    setListFailure(null);
 
     try {
-      const result = await listShortLinks(pageSize, nextPageNumber);
+      const result = await listShortLinks(pageSize, nextPageNumber, discoveryQuery);
       setLinks(result.items);
       setTotalCount(result.totalCount ?? result.items.length);
       setTotalPages(result.totalPages ?? 1);
       setSelectedCodes(new Set());
       setPageNumber(result.page ?? nextPageNumber);
     } catch (error) {
-      setLinks([]);
-      setTotalCount(0);
-      setTotalPages(1);
-      setSelectedCodes(new Set());
-      if (error instanceof ApiError) {
-        setErrorMessage(toFriendlyErrorMessage(error.errorCode, error.message));
-      } else {
-        setErrorMessage("We could not load links right now.");
-      }
+      const message = error instanceof ApiError
+        ? toFriendlyErrorMessage(error.errorCode, error.message)
+        : "We could not load links right now.";
+      setListFailure({
+        ...createRecoveryNotice(error, message),
+        pageNumber: nextPageNumber
+      });
     } finally {
       setIsLoading(false);
     }
@@ -136,7 +151,7 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
         window.clearTimeout(copyFeedbackTimeoutRef.current);
       }
     };
-  }, [pageSize]);
+  }, [pageSize, discoveryQuery]);
 
   useEffect(() => {
     onDirtyChange?.(hasEditChanges);
@@ -182,13 +197,13 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
         copyFeedbackTimeoutRef.current = null;
       }, 1500);
     } catch {
-      setErrorMessage("Clipboard access was blocked, so the URL could not be copied.");
+      setActionError("Clipboard access was blocked, so the URL could not be copied.");
     }
   };
 
   const handleDeactivate = async (code: string) => {
     setBusyCode(code);
-    setErrorMessage(null);
+    setActionError(null);
 
     try {
       const response = await deactivateShortLink(code);
@@ -204,9 +219,9 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
       });
     } catch (error) {
       if (error instanceof ApiError) {
-        setErrorMessage(toFriendlyErrorMessage(error.errorCode, error.message));
+        setActionError(toFriendlyErrorMessage(error.errorCode, error.message));
       } else {
-        setErrorMessage("The link could not be deactivated.");
+        setActionError("The link could not be deactivated.");
       }
     } finally {
       setBusyCode(null);
@@ -215,7 +230,7 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
 
   const handleActivate = async (code: string) => {
     setBusyCode(code);
-    setErrorMessage(null);
+    setActionError(null);
 
     try {
       const response = await activateShortLink(code);
@@ -231,9 +246,9 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
       });
     } catch (error) {
       if (error instanceof ApiError) {
-        setErrorMessage(toFriendlyErrorMessage(error.errorCode, error.message));
+        setActionError(toFriendlyErrorMessage(error.errorCode, error.message));
       } else {
-        setErrorMessage("The link could not be activated.");
+        setActionError("The link could not be activated.");
       }
     } finally {
       setBusyCode(null);
@@ -248,7 +263,8 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
     setIsCreating(false);
     setEditingCode(link.code);
     setOpenMenuCode(null);
-    setErrorMessage(null);
+    setActionError(null);
+    setEditorRequestError(null);
     setFieldErrors({});
     const nextForm = {
       originalUrl: link.originalUrl,
@@ -267,7 +283,8 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
     setIsCreating(true);
     setEditingCode(null);
     setOpenMenuCode(null);
-    setErrorMessage(null);
+    setActionError(null);
+    setEditorRequestError(null);
     setFieldErrors({});
     setEditForm(nextForm);
     setInitialEditForm(nextForm);
@@ -278,6 +295,7 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
     setEditingCode(null);
     setFieldErrors({});
     setInitialEditForm({ originalUrl: "", expiredAtLocal: "" });
+    setEditorRequestError(null);
   };
 
   const validateEditorForm = () => {
@@ -340,7 +358,8 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
     };
 
     setBusyCode("__create__");
-    setErrorMessage(null);
+    setActionError(null);
+    setEditorRequestError(null);
 
     try {
       const created = await createShortLink(payload);
@@ -360,6 +379,11 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
         error instanceof ApiError
           ? toFriendlyErrorMessage(error.errorCode, error.message)
           : "The link could not be created.";
+
+      if (shouldPreserveMutationContext(error)) {
+        setEditorRequestError(message);
+        return;
+      }
 
       closeEditor();
       showToast({
@@ -386,7 +410,8 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
     };
 
     setBusyCode(code);
-    setErrorMessage(null);
+    setActionError(null);
+    setEditorRequestError(null);
 
     try {
       const updated = await updateShortLink(code, payload);
@@ -409,6 +434,11 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
           ? toFriendlyErrorMessage(error.errorCode, error.message)
           : "The link could not be updated.";
 
+      if (shouldPreserveMutationContext(error)) {
+        setEditorRequestError(message);
+        return;
+      }
+
       closeEditor();
       showToast({
         title: "Update failed",
@@ -423,7 +453,7 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
   const handleDelete = async (code: string) => {
     setBusyCode(code);
     setOpenMenuCode(null);
-    setErrorMessage(null);
+    setActionError(null);
 
     try {
       const response = await deleteShortLink(code);
@@ -446,9 +476,9 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
       });
     } catch (error) {
       if (error instanceof ApiError) {
-        setErrorMessage(toFriendlyErrorMessage(error.errorCode, error.message));
+        setActionError(toFriendlyErrorMessage(error.errorCode, error.message));
       } else {
-        setErrorMessage("The link could not be deleted.");
+        setActionError("The link could not be deleted.");
       }
     } finally {
       setBusyCode(null);
@@ -462,7 +492,7 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
     }
 
     setIsBulkDeleting(true);
-    setErrorMessage(null);
+    setActionError(null);
 
     try {
       await Promise.all(codes.map((code) => deleteShortLink(code)));
@@ -478,9 +508,9 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
       });
     } catch (error) {
       if (error instanceof ApiError) {
-        setErrorMessage(toFriendlyErrorMessage(error.errorCode, error.message));
+        setActionError(toFriendlyErrorMessage(error.errorCode, error.message));
       } else {
-        setErrorMessage("Selected links could not be deleted.");
+        setActionError("Selected links could not be deleted.");
       }
     } finally {
       setIsBulkDeleting(false);
@@ -494,7 +524,7 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
     }
 
     setIsBulkUpdating(true);
-    setErrorMessage(null);
+    setActionError(null);
 
     try {
       const responses = await Promise.all(
@@ -516,9 +546,9 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
       });
     } catch (error) {
       if (error instanceof ApiError) {
-        setErrorMessage(toFriendlyErrorMessage(error.errorCode, error.message));
+        setActionError(toFriendlyErrorMessage(error.errorCode, error.message));
       } else {
-        setErrorMessage(nextIsActive
+        setActionError(nextIsActive
           ? "Selected links could not be activated."
           : "Selected links could not be deactivated.");
       }
@@ -566,23 +596,19 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
     });
   };
 
-  const openAnalyticsPanel = async (link: ShortLinkAdminItem) => {
-    if (!adminPermissions.canReadAnalytics) {
-      return;
-    }
-
-    setAnalyticsCode(link.code);
+  const loadAnalytics = async (code: string) => {
     setAnalyticsData(null);
     setAnalyticsError(null);
+    setIsAnalyticsRetryable(false);
     setIsAnalyticsLoading(true);
-    setOpenMenuCode(null);
 
     try {
-      const analytics = await getShortLinkAnalytics(link.code);
+      const analytics = await getShortLinkAnalytics(code);
       setAnalyticsData(analytics);
     } catch (error) {
       if (error instanceof ApiError) {
         setAnalyticsError(toFriendlyErrorMessage(error.errorCode, error.message));
+        setIsAnalyticsRetryable(error.retryable);
       } else {
         setAnalyticsError("Analytics could not be loaded.");
       }
@@ -591,10 +617,21 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
     }
   };
 
+  const openAnalyticsPanel = (link: ShortLinkAdminItem) => {
+    if (!adminPermissions.canReadAnalytics) {
+      return;
+    }
+
+    setAnalyticsCode(link.code);
+    setOpenMenuCode(null);
+    void loadAnalytics(link.code);
+  };
+
   const closeAnalyticsPanel = () => {
     setAnalyticsCode(null);
     setAnalyticsData(null);
     setAnalyticsError(null);
+    setIsAnalyticsRetryable(false);
     setIsAnalyticsLoading(false);
   };
 
@@ -659,6 +696,12 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
     void loadLinks(Math.max(1, Math.min(nextPageNumber, totalPages)));
   };
 
+  const handleDiscoveryChange = (nextQuery: ShortLinkDiscoveryQuery) => {
+    const change = createShortLinkDiscoveryChange(nextQuery);
+    setPageNumber(change.pageNumber);
+    setDiscoveryQuery(change.query);
+  };
+
   const hasRowActions = (link: ShortLinkAdminItem) =>
     adminPermissions.canReadAnalytics
     || adminPermissions.canUpdate
@@ -687,6 +730,12 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
       </CardHeader>
 
       <CardContent>
+      <ShortLinkDiscoveryToolbar
+        value={discoveryQuery}
+        disabled={isLoading}
+        onChange={handleDiscoveryChange}
+      />
+
       {shouldShowList && selectedCount > 0 && hasBulkActions ? (
       <div className="admin-bulk-bar">
         <div className="admin-toolbar-group">
@@ -730,10 +779,43 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
 
       {isLoading ? <TableSkeleton /> : null}
 
-      {!isLoading && !shouldShowList ? (
+      {!isLoading && listFailure && links.length === 0 ? (
         <EmptyState
-          title="No data"
-          description="Create a short link first, then manage it here."
+          title="Links could not be loaded"
+          description={listFailure.message}
+          action={listFailure.retryable
+            ? <Button variant="secondary" onClick={() => void loadLinks(listFailure.pageNumber)}>Retry</Button>
+            : undefined}
+        />
+      ) : null}
+
+      {!isLoading && listFailure && links.length > 0 ? (
+        <div className="recovery-banner" role="alert">
+          <span>{listFailure.message}</span>
+          {listFailure.retryable ? (
+            <Button variant="secondary" onClick={() => void loadLinks(listFailure.pageNumber)}>
+              Retry
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {actionError ? (
+        <div className="recovery-banner recovery-banner-error" role="alert">
+          <span>{actionError}</span>
+          <Button variant="ghost" onClick={() => setActionError(null)}>Dismiss</Button>
+        </div>
+      ) : null}
+
+      {!isLoading && !listFailure && !shouldShowList ? (
+        <EmptyState
+          title={hasShortLinkDiscoveryCriteria(discoveryQuery) ? "No matching links" : "No data"}
+          description={hasShortLinkDiscoveryCriteria(discoveryQuery)
+            ? "Try a different search, status, or sort selection."
+            : "Create a short link first, then manage it here."}
+          action={hasShortLinkDiscoveryCriteria(discoveryQuery)
+            ? <Button variant="secondary" onClick={() => handleDiscoveryChange(defaultShortLinkDiscoveryQuery)}>Clear filters</Button>
+            : undefined}
         />
       ) : null}
 
@@ -1052,6 +1134,11 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
                 }}
               />
             </Label>
+            {editorRequestError ? (
+              <div className="recovery-banner recovery-banner-error" role="alert">
+                <span>{editorRequestError} Your changes are still here; choose Save to try again.</span>
+              </div>
+            ) : null}
             <div className="dialog-actions">
               <Button
                 variant="secondary"
@@ -1109,6 +1196,9 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
               <EmptyState
                 title="Analytics unavailable"
                 description={analyticsError}
+                action={isAnalyticsRetryable
+                  ? <Button variant="secondary" onClick={() => void loadAnalytics(analyticsCode)}>Retry</Button>
+                  : undefined}
               />
             ) : null}
 

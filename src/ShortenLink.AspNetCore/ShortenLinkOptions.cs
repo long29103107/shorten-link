@@ -79,6 +79,10 @@ public sealed class ShortenLinkSecurityOptions
 
     public string HeaderName { get; set; } = "X-ShortenLink-Api-Key";
 
+    public string SessionSigningKey { get; set; } = string.Empty;
+
+    public int SessionTokenTtlMinutes { get; set; } = 480;
+
     public IList<ShortenLinkApiKeyOptions> ApiKeys { get; set; } = new List<ShortenLinkApiKeyOptions>();
 }
 

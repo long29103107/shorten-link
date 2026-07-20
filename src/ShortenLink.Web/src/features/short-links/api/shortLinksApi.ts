@@ -8,12 +8,44 @@ import type {
   SecurityAssignmentDisabled,
   SecurityAssignmentsList,
   SecurityAssignmentUpsertRequest,
+  SecurityCustomRoleUpsertRequest,
+  SecurityCurrentUser,
+  SecurityLoginResponse,
+  SecurityRole,
+  SecurityRoleDisabled,
+  SecurityRolesList,
+  SecurityUser,
+  SecurityUserApiKey,
+  SecurityUserApiKeyCreated,
+  SecurityUserApiKeyDisabled,
+  SecurityUserApiKeysList,
+  SecurityUserDisabled,
+  SecurityUsersList,
+  SecurityUserUpsertRequest,
   ShortLinkAnalytics,
   ShortLinkAdminItem,
   ShortLinkAdminPageResult,
+  ShortLinkDiscoveryQuery,
   ShortLinkDetails,
   UpdateShortLinkRequest
 } from "../types";
+
+export async function loginSecurityUser(
+  username: string,
+  password: string
+): Promise<SecurityLoginResponse> {
+  return fetchJson<SecurityLoginResponse>("/api/security/login", {
+    method: "POST",
+    suppressAuthRedirect: true,
+    body: JSON.stringify({ username, password })
+  });
+}
+
+export async function getCurrentSecurityUser(): Promise<SecurityCurrentUser> {
+  return fetchJson<SecurityCurrentUser>("/api/security/me", {
+    suppressAuthRedirect: true
+  });
+}
 
 export async function createShortLink(
   request: CreateShortLinkRequest
@@ -34,14 +66,33 @@ export async function getShortLinkAnalytics(code: string): Promise<ShortLinkAnal
 
 export async function listShortLinks(
   limit = 25,
-  page = 1
+  page = 1,
+  discovery?: ShortLinkDiscoveryQuery
 ): Promise<ShortLinkAdminPageResult> {
+  return fetchJson<ShortLinkAdminPageResult>(buildShortLinkListUrl(limit, page, discovery));
+}
+
+export function buildShortLinkListUrl(
+  limit = 25,
+  page = 1,
+  discovery?: ShortLinkDiscoveryQuery
+) {
   const params = new URLSearchParams({
     limit: String(limit),
     page: String(page)
   });
 
-  return fetchJson<ShortLinkAdminPageResult>(`/api/short-links?${params.toString()}`);
+  if (discovery) {
+    const search = discovery.search.trim();
+    if (search) {
+      params.set("search", search);
+    }
+    params.set("status", discovery.status);
+    params.set("sortBy", discovery.sortBy);
+    params.set("sortDirection", discovery.sortDirection);
+  }
+
+  return `/api/short-links?${params.toString()}`;
 }
 
 export async function deactivateShortLink(code: string): Promise<DeactivatedShortLink> {
@@ -90,6 +141,68 @@ export async function disableSecurityAssignment(
 ): Promise<SecurityAssignmentDisabled> {
   return fetchJson<SecurityAssignmentDisabled>(
     `/api/security/assignments/${encodeURIComponent(credentialKeyHash)}/disable`,
+    { method: "POST" }
+  );
+}
+
+export async function listSecurityRoles(): Promise<SecurityRolesList> {
+  return fetchJson<SecurityRolesList>("/api/security/roles");
+}
+
+export async function upsertCustomSecurityRole(
+  request: SecurityCustomRoleUpsertRequest
+): Promise<SecurityRole> {
+  return fetchJson<SecurityRole>("/api/security/roles/custom", {
+    method: "PUT",
+    body: JSON.stringify(request)
+  });
+}
+
+export async function disableCustomSecurityRole(id: string): Promise<SecurityRoleDisabled> {
+  return fetchJson<SecurityRoleDisabled>(
+    `/api/security/roles/custom/${encodeURIComponent(id)}/disable`,
+    { method: "POST" }
+  );
+}
+
+export async function listSecurityUsers(): Promise<SecurityUsersList> {
+  return fetchJson<SecurityUsersList>("/api/security/users");
+}
+
+export async function upsertSecurityUser(request: SecurityUserUpsertRequest): Promise<SecurityUser> {
+  return fetchJson<SecurityUser>("/api/security/users", {
+    method: "PUT",
+    body: JSON.stringify(request)
+  });
+}
+
+export async function disableSecurityUser(id: string): Promise<SecurityUserDisabled> {
+  return fetchJson<SecurityUserDisabled>(`/api/security/users/${encodeURIComponent(id)}/disable`, {
+    method: "POST"
+  });
+}
+
+export async function listUserApiKeys(): Promise<SecurityUserApiKeysList> {
+  return fetchJson<SecurityUserApiKeysList>("/api/security/api-keys");
+}
+
+export async function createUserApiKey(displayName: string): Promise<SecurityUserApiKeyCreated> {
+  return fetchJson<SecurityUserApiKeyCreated>("/api/security/api-keys", {
+    method: "POST",
+    body: JSON.stringify({ displayName })
+  });
+}
+
+export async function renameUserApiKey(id: string, displayName: string): Promise<SecurityUserApiKey> {
+  return fetchJson<SecurityUserApiKey>(`/api/security/api-keys/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    body: JSON.stringify({ displayName })
+  });
+}
+
+export async function disableUserApiKey(id: string): Promise<SecurityUserApiKeyDisabled> {
+  return fetchJson<SecurityUserApiKeyDisabled>(
+    `/api/security/api-keys/${encodeURIComponent(id)}/disable`,
     { method: "POST" }
   );
 }
