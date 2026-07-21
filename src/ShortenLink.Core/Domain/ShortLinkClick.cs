@@ -1,13 +1,14 @@
 namespace ShortenLink.Core.Domain;
 
-public sealed class ShortLinkClick
+public sealed class ShortLinkClickEntity : BaseEntity
 {
-    public ShortLinkClick(
+    public ShortLinkClickEntity(
         string shortCode,
         DateTimeOffset clickedAtUtc,
         string? remoteIpAddress,
         string? userAgent,
         string? referrer)
+        : base(clickedAtUtc)
     {
         ShortCodeValidator.ValidateCodeOrThrow(shortCode);
 

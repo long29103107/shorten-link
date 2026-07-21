@@ -34,7 +34,7 @@ internal sealed class ShortLinkClickBackgroundService : BackgroundService
             {
                 using var scope = scopeFactory.CreateScope();
                 var repository = scope.ServiceProvider.GetRequiredService<IShortLinkClickRepository>();
-                var shortLinkClick = new ShortLinkClick(
+                var shortLinkClick = new ShortLinkClickEntity(
                     request.ShortCode,
                     request.ClickedAtUtc,
                     request.RemoteIpAddress,

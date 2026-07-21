@@ -13,8 +13,7 @@ import { Button } from "../../../shared/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../shared/components/ui/card";
 import { ConfirmDialog } from "../../../shared/components/ConfirmDialog";
 import { EmptyState } from "../../../shared/components/EmptyState";
-import { Input } from "../../../shared/components/ui/input";
-import { Label } from "../../../shared/components/ui/label";
+import { FormField } from "../../../shared/components/FormField";
 import { showToast } from "../../../shared/toast";
 
 type SecurityAssignmentFieldErrors = {
@@ -277,53 +276,27 @@ export function SecurityAssignmentsPage() {
               ) : null}
             </div>
 
-            <Label className="field">
-              <span className="field-label">
-                Assignment name <span className="required-marker">*</span>
-              </span>
-              <Input
-                value={form.name}
-                aria-invalid={fieldErrors.name ? "true" : undefined}
-                onChange={(event) => {
+            <FormField id="assignment-name" label="Assignment name" required value={form.name} error={fieldErrors.name} onChange={(value) => {
                   setForm((current) => ({
                     ...current,
-                    name: event.target.value
+                    name: value
                   }));
                   setFieldErrors((current) => ({
                     ...current,
                     name: undefined
                   }));
-                }}
-              />
-              {fieldErrors.name ? (
-                <span className="field-error">{fieldErrors.name}</span>
-              ) : null}
-            </Label>
+                }} />
 
-            <Label className="field">
-              <span className="field-label">
-                Credential key <span className="required-marker">*</span>
-              </span>
-              <Input
-                type="password"
-                value={form.credentialKey}
-                aria-invalid={fieldErrors.credentialKey ? "true" : undefined}
-                placeholder={editingHash ? "Enter key again to update" : "New admin API key"}
-                onChange={(event) => {
+            <FormField id="assignment-credential-key" label="Credential key" required type="password" value={form.credentialKey} error={fieldErrors.credentialKey} placeholder={editingHash ? "Enter key again to update" : "New admin API key"} onChange={(value) => {
                   setForm((current) => ({
                     ...current,
-                    credentialKey: event.target.value
+                    credentialKey: value
                   }));
                   setFieldErrors((current) => ({
                     ...current,
                     credentialKey: undefined
                   }));
-                }}
-              />
-              {fieldErrors.credentialKey ? (
-                <span className="field-error">{fieldErrors.credentialKey}</span>
-              ) : null}
-            </Label>
+                }} />
 
             <fieldset className="security-choice-group">
               <legend>System roles</legend>

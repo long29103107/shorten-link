@@ -1,14 +1,17 @@
+using ShortenLink.Core.Domain;
+
 namespace ShortenLink.Core.Security;
 
-public sealed class ShortenLinkSecurityAssignment
+public sealed class ShortenLinkSecurityAssignmentEntity : BaseEntity
 {
-    public ShortenLinkSecurityAssignment(
+    public ShortenLinkSecurityAssignmentEntity(
         string credentialKeyHash,
         string name,
         IReadOnlyList<string> roles,
         IReadOnlyList<string> permissions,
         bool isEnabled,
         DateTimeOffset createdAt)
+        : base(createdAt)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(credentialKeyHash);
 
@@ -17,7 +20,6 @@ public sealed class ShortenLinkSecurityAssignment
         Roles = roles;
         Permissions = permissions;
         IsEnabled = isEnabled;
-        CreatedAt = createdAt;
     }
 
     public string CredentialKeyHash { get; }
@@ -30,5 +32,4 @@ public sealed class ShortenLinkSecurityAssignment
 
     public bool IsEnabled { get; }
 
-    public DateTimeOffset CreatedAt { get; }
 }

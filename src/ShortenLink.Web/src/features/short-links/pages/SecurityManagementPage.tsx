@@ -42,6 +42,8 @@ import { Label } from "../../../shared/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../../shared/components/ui/table";
 import { showToast } from "../../../shared/toast";
 import { createRecoveryNotice, type RecoveryNotice } from "../../../shared/api/recovery";
+import { FormField } from "../../../shared/components/FormField";
+import { DiscoverySelect } from "../../../shared/components/DiscoverySelect";
 
 const permissionOptions = Object.values(shortLinkPermissions);
 const permissionGroups = [
@@ -340,9 +342,9 @@ export function SecurityManagementPage({ section }: { section: SecuritySection }
                 value={userDiscovery.search}
                 onChange={(event) => updateUserDiscovery({ search: event.target.value })}
               /></div>
-              <label className="admin-discovery-field"><span>Status</span><select value={userDiscovery.status} onChange={(event) => updateUserDiscovery({ status: event.target.value as SecurityUserDiscovery["status"] })}><option value="all">All</option><option value="enabled">Enabled</option><option value="disabled">Disabled</option></select></label>
-              <label className="admin-discovery-field"><span>Sort by</span><select value={userDiscovery.sortBy} onChange={(event) => updateUserDiscovery({ sortBy: event.target.value as SecurityUserDiscovery["sortBy"] })}><option value="createdAt">Created date</option><option value="email">Email</option><option value="displayName">Display name</option></select></label>
-              <label className="admin-discovery-field"><span>Direction</span><select value={userDiscovery.direction} onChange={(event) => updateUserDiscovery({ direction: event.target.value as SecurityUserDiscovery["direction"] })}><option value="desc">Descending</option><option value="asc">Ascending</option></select></label>
+              <DiscoverySelect label="Status" value={userDiscovery.status} onChange={(status) => updateUserDiscovery({ status })}><option value="all">All</option><option value="enabled">Enabled</option><option value="disabled">Disabled</option></DiscoverySelect>
+              <DiscoverySelect label="Sort by" value={userDiscovery.sortBy} onChange={(sortBy) => updateUserDiscovery({ sortBy })}><option value="createdAt">Created date</option><option value="email">Email</option><option value="displayName">Display name</option></DiscoverySelect>
+              <DiscoverySelect label="Direction" value={userDiscovery.direction} onChange={(direction) => updateUserDiscovery({ direction })}><option value="desc">Descending</option><option value="asc">Ascending</option></DiscoverySelect>
             </div>
 
             {visibleUsers.length === 0 ? (
@@ -465,14 +467,7 @@ function IdentityField({ id, label, value, error, type = "text", autoComplete, o
   autoComplete?: string;
   onChange: (value: string) => void;
 }) {
-  const errorId = `${id}-error`;
-  return (
-    <Label className="field" htmlFor={id}>
-      <span className="field-label">{label}</span>
-      <Input id={id} type={type} value={value} autoComplete={autoComplete} aria-invalid={error ? "true" : undefined} aria-describedby={error ? errorId : undefined} onChange={(event) => onChange(event.target.value)} />
-      {error ? <span id={errorId} className="field-error">{error}</span> : null}
-    </Label>
-  );
+  return <FormField id={id} label={label} value={value} error={error} type={type} autoComplete={autoComplete} onChange={onChange} />;
 }
 
 function RoleChoiceGroup({ roles, selected, error, onToggle }: { roles: SecurityRole[]; selected: string[]; error?: string; onToggle: (roleId: string) => void }) {

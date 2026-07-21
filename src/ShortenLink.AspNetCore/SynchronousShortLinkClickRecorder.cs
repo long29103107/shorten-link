@@ -19,7 +19,7 @@ internal sealed class SynchronousShortLinkClickRecorder : IShortLinkClickRecorde
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var shortLinkClick = new ShortLinkClick(
+        var shortLinkClick = new ShortLinkClickEntity(
             request.ShortCode,
             request.ClickedAtUtc,
             request.RemoteIpAddress,

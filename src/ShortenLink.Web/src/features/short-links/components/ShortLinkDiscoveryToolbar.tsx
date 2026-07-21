@@ -2,6 +2,8 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Button } from "../../../shared/components/ui/button";
 import { Input } from "../../../shared/components/ui/input";
 import type { ShortLinkDiscoveryQuery } from "../types";
+import { DiscoverySelect } from "../../../shared/components/DiscoverySelect";
+import { useDebouncedCallback } from "../../../shared/hooks/useDebouncedCallback";
 
 export const defaultShortLinkDiscoveryQuery: ShortLinkDiscoveryQuery = {
   search: "",
@@ -33,11 +35,18 @@ export function ShortLinkDiscoveryToolbar({
   onChange
 }: ShortLinkDiscoveryToolbarProps) {
   const [search, setSearch] = useState(value.search);
+  const debouncedSearch = useDebouncedCallback((nextSearch: string) => {
+    onChange({ ...value, search: nextSearch.trim() });
+  }, 350);
 
-  useEffect(() => setSearch(value.search), [value.search]);
+  useEffect(() => {
+    debouncedSearch.cancel();
+    setSearch(value.search);
+  }, [value.search]);
 
   const submitSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    debouncedSearch.cancel();
     onChange({ ...value, search: search.trim() });
   };
 
@@ -49,70 +58,46 @@ export function ShortLinkDiscoveryToolbar({
           disabled={disabled}
           aria-label="Search code or destination"
           placeholder="Search code or destination"
-          onChange={(event) => setSearch(event.target.value)}
+          onChange={(event) => {
+            setSearch(event.target.value);
+            debouncedSearch.invoke(event.target.value);
+          }}
         />
         <Button type="submit" variant="secondary" disabled={disabled}>
           Search
         </Button>
       </div>
 
-      <label className="admin-discovery-field">
-        <span>Status</span>
-        <select
-          value={value.status}
-          disabled={disabled}
-          onChange={(event) => onChange({
-            ...value,
-            status: event.target.value as ShortLinkDiscoveryQuery["status"]
-          })}
-        >
+      <DiscoverySelect label="Status" value={value.status} disabled={disabled} onChange={(status) => onChange({ ...value, status })}>
           <option value="all">All</option>
           <option value="active">Active</option>
           <option value="inactive">Inactive</option>
           <option value="expired">Expired</option>
           <option value="expiring-soon">Expiring soon</option>
-        </select>
-      </label>
+      </DiscoverySelect>
 
-      <label className="admin-discovery-field">
-        <span>Sort by</span>
-        <select
-          value={value.sortBy}
-          disabled={disabled}
-          onChange={(event) => onChange({
-            ...value,
-            sortBy: event.target.value as ShortLinkDiscoveryQuery["sortBy"]
-          })}
-        >
+      <DiscoverySelect label="Sort by" value={value.sortBy} disabled={disabled} onChange={(sortBy) => onChange({ ...value, sortBy })}>
           <option value="created">Created date</option>
           <option value="expiry">Expiry</option>
           <option value="destination">Destination</option>
           <option value="code">Code</option>
           <option value="status">Status</option>
-        </select>
-      </label>
+      </DiscoverySelect>
 
-      <label className="admin-discovery-field">
-        <span>Direction</span>
-        <select
-          value={value.sortDirection}
-          disabled={disabled}
-          onChange={(event) => onChange({
-            ...value,
-            sortDirection: event.target.value as ShortLinkDiscoveryQuery["sortDirection"]
-          })}
-        >
+      <DiscoverySelect label="Direction" value={value.sortDirection} disabled={disabled} onChange={(sortDirection) => onChange({ ...value, sortDirection })}>
           <option value="desc">Descending</option>
           <option value="asc">Ascending</option>
-        </select>
-      </label>
+      </DiscoverySelect>
 
       {hasShortLinkDiscoveryCriteria(value) || search !== value.search ? (
         <Button
           type="button"
           variant="secondary"
           disabled={disabled}
-          onClick={() => onChange(defaultShortLinkDiscoveryQuery)}
+          onClick={() => {
+            debouncedSearch.cancel();
+            onChange(defaultShortLinkDiscoveryQuery);
+          }}
         >
           Reset
         </Button>

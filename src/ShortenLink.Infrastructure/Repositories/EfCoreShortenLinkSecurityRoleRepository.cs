@@ -50,7 +50,7 @@ public sealed class EfCoreShortenLinkSecurityRoleRepository : IShortenLinkSecuri
         ArgumentNullException.ThrowIfNull(role);
 
         var record = await dbContext.SecurityCustomRoles
-            .FirstOrDefaultAsync(candidate => candidate.Id == role.Id, cancellationToken)
+            .FirstOrDefaultAsync(candidate => candidate.Id == role.RoleKey, cancellationToken)
             .ConfigureAwait(false);
 
         if (record is null)

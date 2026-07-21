@@ -23,7 +23,7 @@ public sealed class ShortenLinkCustomRoleRecord
 
         return new ShortenLinkCustomRoleRecord
         {
-            Id = role.Id,
+            Id = role.RoleKey,
             Name = role.Name,
             PermissionsJson = JsonSerializer.Serialize(role.Permissions, SerializerOptions),
             IsEnabled = role.IsEnabled,

@@ -1,13 +1,14 @@
 namespace ShortenLink.Core.Domain;
 
-public sealed class ShortLink
+public sealed class ShortLinkEntity : BaseEntity
 {
-    public ShortLink(
+    public ShortLinkEntity(
         string code,
         Uri originalUrl,
         DateTimeOffset createdAt,
         DateTimeOffset? expiresAt = null,
         bool isActive = true)
+        : base(createdAt)
     {
         ShortCodeValidator.ValidateCodeOrThrow(code);
         ArgumentNullException.ThrowIfNull(originalUrl);
@@ -19,7 +20,6 @@ public sealed class ShortLink
 
         Code = code;
         OriginalUrl = originalUrl;
-        CreatedAt = createdAt;
         ExpiresAt = expiresAt;
         IsActive = isActive;
     }
@@ -27,8 +27,6 @@ public sealed class ShortLink
     public string Code { get; }
 
     public Uri OriginalUrl { get; }
-
-    public DateTimeOffset CreatedAt { get; }
 
     public DateTimeOffset? ExpiresAt { get; }
 

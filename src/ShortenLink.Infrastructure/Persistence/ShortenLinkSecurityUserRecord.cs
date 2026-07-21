@@ -31,7 +31,7 @@ public sealed class ShortenLinkSecurityUserRecord
 
         return new ShortenLinkSecurityUserRecord
         {
-            Id = user.Id,
+            Id = user.UserKey,
             Username = user.Username,
             DisplayName = user.DisplayName,
             PasswordHash = user.PasswordHash,

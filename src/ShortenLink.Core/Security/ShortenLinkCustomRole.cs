@@ -1,13 +1,16 @@
+using ShortenLink.Core.Domain;
+
 namespace ShortenLink.Core.Security;
 
-public sealed class ShortenLinkCustomRole
+public sealed class ShortenLinkCustomRoleEntity : BaseEntity
 {
-    public ShortenLinkCustomRole(
+    public ShortenLinkCustomRoleEntity(
         string id,
         string name,
         IReadOnlyList<string> permissions,
         bool isEnabled,
         DateTimeOffset createdAt)
+        : base(createdAt)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -22,22 +25,19 @@ public sealed class ShortenLinkCustomRole
             }
         }
 
-        Id = id;
+        RoleKey = id;
         Name = name.Trim();
         Permissions = normalizedPermissions;
         IsEnabled = isEnabled;
-        CreatedAt = createdAt;
     }
 
-    public string Id { get; }
+    public string RoleKey { get; }
 
     public string Name { get; }
 
     public IReadOnlyList<string> Permissions { get; }
 
     public bool IsEnabled { get; }
-
-    public DateTimeOffset CreatedAt { get; }
 
     private static IReadOnlyList<string> NormalizeDistinct(IEnumerable<string> values) =>
         values

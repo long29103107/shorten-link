@@ -68,7 +68,7 @@ public sealed class EfCoreShortenLinkUserApiKeyRepository : IShortenLinkUserApiK
         ArgumentNullException.ThrowIfNull(apiKey);
 
         var record = await dbContext.SecurityUserApiKeys
-            .FirstOrDefaultAsync(candidate => candidate.Id == apiKey.Id, cancellationToken)
+            .FirstOrDefaultAsync(candidate => candidate.Id == apiKey.ApiKeyKey, cancellationToken)
             .ConfigureAwait(false);
 
         if (record is null)

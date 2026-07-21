@@ -1,8 +1,10 @@
+using ShortenLink.Core.Domain;
+
 namespace ShortenLink.Core.Security;
 
-public sealed class ShortenLinkSecurityUser
+public sealed class ShortenLinkSecurityUserEntity : BaseEntity
 {
-    public ShortenLinkSecurityUser(
+    public ShortenLinkSecurityUserEntity(
         string id,
         string username,
         string displayName,
@@ -12,6 +14,7 @@ public sealed class ShortenLinkSecurityUser
         bool isHidden,
         bool isBootstrap,
         DateTimeOffset createdAt)
+        : base(createdAt)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         ArgumentException.ThrowIfNullOrWhiteSpace(username);
@@ -19,7 +22,7 @@ public sealed class ShortenLinkSecurityUser
         ArgumentException.ThrowIfNullOrWhiteSpace(passwordHash);
         ArgumentNullException.ThrowIfNull(roleIds);
 
-        Id = id;
+        UserKey = id;
         Username = username.Trim();
         DisplayName = displayName.Trim();
         PasswordHash = passwordHash;
@@ -27,10 +30,9 @@ public sealed class ShortenLinkSecurityUser
         IsEnabled = isEnabled;
         IsHidden = isHidden;
         IsBootstrap = isBootstrap;
-        CreatedAt = createdAt;
     }
 
-    public string Id { get; }
+    public string UserKey { get; }
 
     public string Username { get; }
 
@@ -45,8 +47,6 @@ public sealed class ShortenLinkSecurityUser
     public bool IsHidden { get; }
 
     public bool IsBootstrap { get; }
-
-    public DateTimeOffset CreatedAt { get; }
 
     private static IReadOnlyList<string> NormalizeDistinct(IEnumerable<string> values) =>
         values

@@ -194,7 +194,7 @@ public sealed class ShortenLinkUserSessionService(
         }
 
         return new ShortenLinkUserSessionPrincipal(
-            user.Id,
+            user.UserKey,
             user.Username,
             user.DisplayName,
             user.RoleIds,
@@ -205,7 +205,7 @@ public sealed class ShortenLinkUserSessionService(
     private string CreateToken(ShortenLinkSecurityUser user, DateTimeOffset issuedAtUtc, string kind)
     {
         var payload = new SessionTokenPayload(
-            user.Id,
+            user.UserKey,
             user.Username,
             issuedAtUtc.ToUnixTimeSeconds(),
             kind,

@@ -5,8 +5,7 @@ import { ApiError } from "../api/http";
 import { toFriendlyErrorMessage } from "../types";
 import { Button } from "../../../shared/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "../../../shared/components/ui/card";
-import { Input } from "../../../shared/components/ui/input";
-import { Label } from "../../../shared/components/ui/label";
+import { FormField } from "../../../shared/components/FormField";
 import { showToast } from "../../../shared/toast";
 import { createRecoveryNotice, type RecoveryNotice } from "../../../shared/api/recovery";
 import {
@@ -85,39 +84,14 @@ export function LoginPage({ onSignedIn, onBackHome }: LoginPageProps) {
                 : failure.message}
             </div>
           ) : null}
-          <Label className="field">
-            <span className="field-label">Username</span>
-            <Input
-              autoComplete="username"
-              value={username}
-              aria-invalid={fieldErrors.username ? "true" : undefined}
-              aria-describedby={fieldErrors.username ? "login-username-error" : undefined}
-              onChange={(event) => {
-                setUsername(event.target.value);
+          <FormField id="login-username" label="Username" autoComplete="username" value={username} error={fieldErrors.username} onChange={(value) => {
+                setUsername(value);
                 setFieldErrors((current) => ({ ...current, username: undefined }));
-              }}
-            />
-            {fieldErrors.username ? (
-              <span id="login-username-error" className="field-error">{fieldErrors.username}</span>
-            ) : null}
-          </Label>
-          <Label className="field">
-            <span className="field-label">Password</span>
-            <Input
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              aria-invalid={fieldErrors.password ? "true" : undefined}
-              aria-describedby={fieldErrors.password ? "login-password-error" : undefined}
-              onChange={(event) => {
-                setPassword(event.target.value);
+              }} />
+          <FormField id="login-password" label="Password" type="password" autoComplete="current-password" value={password} error={fieldErrors.password} onChange={(value) => {
+                setPassword(value);
                 setFieldErrors((current) => ({ ...current, password: undefined }));
-              }}
-            />
-            {fieldErrors.password ? (
-              <span id="login-password-error" className="field-error">{fieldErrors.password}</span>
-            ) : null}
-          </Label>
+              }} />
         </CardContent>
         <CardFooter>
           <Button type="submit" disabled={isSubmitting}>

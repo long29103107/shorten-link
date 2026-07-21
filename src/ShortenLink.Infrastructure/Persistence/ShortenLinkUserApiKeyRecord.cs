@@ -22,7 +22,7 @@ public sealed class ShortenLinkUserApiKeyRecord
 
         return new ShortenLinkUserApiKeyRecord
         {
-            Id = apiKey.Id,
+            Id = apiKey.ApiKeyKey,
             UserId = apiKey.UserId,
             DisplayName = apiKey.DisplayName,
             KeyHash = apiKey.KeyHash,

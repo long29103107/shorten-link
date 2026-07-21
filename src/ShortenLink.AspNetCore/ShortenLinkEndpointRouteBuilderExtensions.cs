@@ -299,7 +299,7 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
         }
 
         var renamed = new ShortenLinkUserApiKey(
-            apiKey.Id,
+            apiKey.ApiKeyKey,
             apiKey.UserId,
             request.DisplayName.Trim(),
             apiKey.KeyHash,
@@ -1273,7 +1273,7 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
         var usernameOwner = await userRepository
             .FindByUsernameAsync(request.Username.Trim(), cancellationToken)
             .ConfigureAwait(false);
-        if (usernameOwner is not null && !usernameOwner.Id.Equals(request.Id.Trim(), StringComparison.Ordinal))
+        if (usernameOwner is not null && !usernameOwner.UserKey.Equals(request.Id.Trim(), StringComparison.Ordinal))
         {
             return CreateFieldErrorResponse("invalid_security_user", "Username is already assigned to another user.", "username");
         }
@@ -1384,7 +1384,7 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
         public static ShortLinkAnalyticsResponse FromClicks(
             string code,
             ShortLinkClickSummary summary,
-            IReadOnlyList<ShortLinkClick> recentClicks) =>
+            IReadOnlyList<ShortLinkClickEntity> recentClicks) =>
             new(
                 code,
                 summary.ClickCount,
@@ -1398,7 +1398,7 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
         string? UserAgent,
         string? Referrer)
     {
-        public static ShortLinkClickActivityResponse FromDomain(ShortLinkClick click) =>
+        public static ShortLinkClickActivityResponse FromDomain(ShortLinkClickEntity click) =>
             new(
                 click.ClickedAtUtc,
                 click.RemoteIpAddress,
@@ -1464,7 +1464,7 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
     {
         public static SecurityUserApiKeyResponse FromDomain(ShortenLinkUserApiKey apiKey) =>
             new(
-                apiKey.Id,
+                apiKey.ApiKeyKey,
                 apiKey.DisplayName,
                 apiKey.IsEnabled,
                 apiKey.CreatedAt);
@@ -1499,7 +1499,7 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
 
         public static SecurityRoleResponse Custom(ShortenLinkCustomRole role) =>
             new(
-                role.Id,
+                role.RoleKey,
                 role.Name,
                 role.Permissions,
                 IsSystem: false,
@@ -1533,7 +1533,7 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
     {
         public static SecurityUserResponse FromDomain(ShortenLinkSecurityUser user) =>
             new(
-                user.Id,
+                user.UserKey,
                 user.Username,
                 user.DisplayName,
                 user.RoleIds,

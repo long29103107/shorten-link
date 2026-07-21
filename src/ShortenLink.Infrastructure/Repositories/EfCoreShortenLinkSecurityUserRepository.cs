@@ -74,7 +74,7 @@ public sealed class EfCoreShortenLinkSecurityUserRepository : IShortenLinkSecuri
         ArgumentNullException.ThrowIfNull(user);
 
         var record = await dbContext.SecurityUsers
-            .FirstOrDefaultAsync(candidate => candidate.Id == user.Id, cancellationToken)
+            .FirstOrDefaultAsync(candidate => candidate.Id == user.UserKey, cancellationToken)
             .ConfigureAwait(false);
 
         if (record is null)

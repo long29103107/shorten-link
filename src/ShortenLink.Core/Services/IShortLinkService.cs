@@ -2,13 +2,13 @@ namespace ShortenLink.Core.Services;
 
 public interface IShortLinkService
 {
-    Task<IReadOnlyList<Domain.ShortLink>> ListRecentAsync(
+    Task<IReadOnlyList<Domain.ShortLinkEntity>> ListRecentAsync(
         int limit = 100,
         DateTimeOffset? beforeCreatedAt = null,
         string? beforeCode = null,
         CancellationToken cancellationToken = default);
 
-    Task<IReadOnlyList<Domain.ShortLink>> ListRecentPageAsync(
+    Task<IReadOnlyList<Domain.ShortLinkEntity>> ListRecentPageAsync(
         int skip,
         int limit = 100,
         CancellationToken cancellationToken = default);
