@@ -10,7 +10,7 @@ import {
 } from "../api/shortLinksApi";
 import { getAdminPermissionState, getStoredCurrentUser, shortLinkPermissions } from "../api/adminSecurity";
 import { ApiError } from "../api/http";
-import type { SecurityRole, SecurityUser } from "../types";
+import type { SecurityRole, SecuritySection, SecurityUser } from "../types";
 import { formatDateTime, toFriendlyErrorMessage } from "../types";
 import {
   hasFieldErrors,
@@ -43,14 +43,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { showToast } from "../../../shared/toast";
 import { createRecoveryNotice, type RecoveryNotice } from "../../../shared/api/recovery";
 
-type Tab = "users" | "roles" | "permissions";
-
 const permissionOptions = Object.values(shortLinkPermissions);
 
-export function SecurityManagementPage() {
+export function SecurityManagementPage({ section }: { section: SecuritySection }) {
   const adminPermissions = getAdminPermissionState();
   const currentUser = getStoredCurrentUser();
-  const [activeTab, setActiveTab] = useState<Tab>("users");
   const [isLoading, setIsLoading] = useState(false);
   const [readFailure, setReadFailure] = useState<RecoveryNotice | null>(null);
   const [actionFailure, setActionFailure] = useState<RecoveryNotice | null>(null);
@@ -289,21 +286,7 @@ export function SecurityManagementPage() {
         {readFailure ? <RecoveryBanner notice={readFailure} onRetry={() => void loadSecurity()} /> : null}
         {actionFailure ? <RecoveryBanner notice={actionFailure} onDismiss={() => setActionFailure(null)} /> : null}
 
-        <div className="security-tabs" role="tablist" aria-label="Security sections">
-          {(["users", "roles", "permissions"] as Tab[]).map((tab) => (
-            <Button
-              key={tab}
-              role="tab"
-              aria-selected={activeTab === tab}
-              variant={activeTab === tab ? "default" : "secondary"}
-              onClick={() => setActiveTab(tab)}
-            >
-              {tab[0].toUpperCase() + tab.slice(1)}
-            </Button>
-          ))}
-        </div>
-
-        {activeTab === "users" ? (
+        {section === "users" ? (
           <div className="security-tab-stack">
             <div className="security-list-header">
               <div>
@@ -438,7 +421,7 @@ export function SecurityManagementPage() {
           </div>
         ) : null}
 
-        {activeTab === "roles" ? (
+        {section === "roles" ? (
           <section className="security-dialog-grid">
             <Card className="security-form-card">
               <CardHeader><p className="eyebrow">Role</p><CardTitle>Create custom role</CardTitle></CardHeader>
@@ -478,7 +461,7 @@ export function SecurityManagementPage() {
           </section>
         ) : null}
 
-        {activeTab === "permissions" ? (
+        {section === "permissions" ? (
           <Card className="security-form-card permission-catalog">
             <CardHeader><p className="eyebrow">Permissions</p><CardTitle>Supported permission catalog</CardTitle></CardHeader>
             <CardContent>

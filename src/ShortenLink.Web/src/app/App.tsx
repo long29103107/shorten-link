@@ -138,7 +138,7 @@ export function App() {
     route.kind === "admin"
       ? "Admin"
       : route.kind === "security"
-        ? "Security"
+        ? "Identity & Access"
       : route.kind === "login"
         ? "Sign in"
       : route.kind === "detail"
@@ -151,7 +151,7 @@ export function App() {
     route.kind === "admin"
       ? "Manage generated random short links"
       : route.kind === "security"
-        ? "Manage user, role, and permission assignments"
+        ? `Manage ${route.section} access controls`
       : route.kind === "login"
         ? "Use your ShortenLink identity session"
       : route.kind === "detail"
@@ -170,7 +170,7 @@ export function App() {
           />
         ) : (
           <LoginPage
-            onSignedIn={() => navigate("/security")}
+            onSignedIn={() => navigate("/security/users")}
             onBackHome={() => navigate("/")}
           />
         )}
@@ -223,15 +223,21 @@ export function App() {
             Admin URLs
           </Button>
           {currentUser || adminPermissions.canManageSecurityAssignments ? (
-            <Button
-              className="sidebar-nav-button"
-              aria-current={route.kind === "security" ? "page" : undefined}
-              variant="ghost"
-              onClick={() => navigate("/security")}
-            >
-              <span className="nav-glyph" aria-hidden="true" />
-              Security
-            </Button>
+            <div className="sidebar-nav-group">
+              <p className="sidebar-nav-group-label">Security</p>
+              {(["users", "roles", "permissions"] as const).map((section) => (
+                <Button
+                  key={section}
+                  className="sidebar-nav-button sidebar-nav-child"
+                  aria-current={route.kind === "security" && route.section === section ? "page" : undefined}
+                  variant="ghost"
+                  onClick={() => navigate(`/security/${section}`)}
+                >
+                  <span className="nav-glyph" aria-hidden="true" />
+                  {section[0].toUpperCase() + section.slice(1)}
+                </Button>
+              ))}
+            </div>
           ) : null}
         </nav>
 
@@ -285,7 +291,7 @@ export function App() {
         ) : null}
 
         {route.kind === "security" ? (
-          <SecurityManagementPage />
+          <SecurityManagementPage section={route.section} />
         ) : null}
 
         {route.kind === "detail" ? (

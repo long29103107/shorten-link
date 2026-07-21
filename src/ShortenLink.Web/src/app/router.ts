@@ -10,7 +10,12 @@ export function parseRoute(pathname: string): AppRoute {
   }
 
   if (pathname === "/security") {
-    return { kind: "security" };
+    return { kind: "security", section: "users" };
+  }
+
+  const securityMatch = /^\/security\/(users|roles|permissions)$/.exec(pathname);
+  if (securityMatch) {
+    return { kind: "security", section: securityMatch[1] as "users" | "roles" | "permissions" };
   }
 
   if (pathname === "/login") {

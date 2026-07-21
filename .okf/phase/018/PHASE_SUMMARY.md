@@ -5,8 +5,8 @@ status: active
 created_at: 2026-07-21
 updated_at: 2026-07-21
 current_task: null
-task_count: 1
-done_count: 1
+task_count: 2
+done_count: 2
 depends_on:
   - 017
 ---
@@ -31,18 +31,20 @@ Give Users, Roles, and Permissions the same compact searchable, actionable, pagi
 | Task | Title | Status | Done At |
 |---|---|---|---|
 | 018_001 | Paginated user management table | done | 2026-07-21T13:52:24+07:00 |
+| 018_002 | Security sidebar navigation | done | 2026-07-21T14:25:15+07:00 |
 
 ## Current Task
 
-No active task. `018_001` is complete.
+No active task. `018_002` is complete.
 
 ## Completed Notes
 
 - `018_001` converted Users to the Admin URLs interaction pattern with search/filter/sort, a paginated table, profile/password/role/deactivate row workflows, and preserved identity validation; 31 Bun tests and the production frontend build passed.
+- `018_002` moved Users, Roles, and Permissions into persistent Security sidebar navigation, added direct routes, and renamed the management surface to Identity & Access; 32 Bun tests and the production frontend build passed.
 
 ## Next Task Proposal
 
-Create `018_002` to apply the same management table, discovery, pagination, and row-action pattern to Roles.
+Create `018_003` to apply the Admin URLs-style management table, discovery, pagination, and row actions to Roles.
 
 ## Task Notes
 

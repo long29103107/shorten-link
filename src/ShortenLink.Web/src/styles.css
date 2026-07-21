@@ -141,6 +141,27 @@ code {
   gap: 6px;
 }
 
+.sidebar-nav-group {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.sidebar-nav-group-label {
+  margin: 0;
+  padding: 8px 12px 4px;
+  color: var(--accent-strong);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.sidebar-nav-child.ui-button {
+  min-height: 30px;
+  padding-left: 24px;
+}
+
 .session-panel {
   display: grid;
   gap: 8px;

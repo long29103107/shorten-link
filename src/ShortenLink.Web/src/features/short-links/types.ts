@@ -1,12 +1,14 @@
 export type AppRoute =
   | { kind: "home" }
   | { kind: "admin" }
-  | { kind: "security" }
+  | { kind: "security"; section: SecuritySection }
   | { kind: "login" }
   | { kind: "detail"; code: string }
   | { kind: "status"; statusCode: HttpStatusCode };
 
 export type HttpStatusCode = 401 | 403 | 404;
+
+export type SecuritySection = "users" | "roles" | "permissions";
 
 export type ShortLinkFormInput = {
   originalUrl: string;
