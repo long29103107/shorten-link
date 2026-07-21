@@ -1,15 +1,18 @@
-import type { ApiErrorPayload } from "../types";
+import type { ApiErrorPayload, SecurityLoginResponse } from "../types";
 import { showToast } from "../../../shared/toast";
 import {
   classifyFetchFailure,
   classifyHttpFailure,
   type ApiFailure
 } from "../../../shared/api/apiFailure";
-import { getAdminApiKeyHeader } from "./adminSecurity";
+import { clearStoredSession, getAdminApiKeyHeader, getStoredRefreshToken, storeSession } from "./adminSecurity";
 
 type FetchJsonOptions = RequestInit & {
   suppressAuthRedirect?: boolean;
+  skipRefresh?: boolean;
 };
+
+let refreshPromise: Promise<boolean> | null = null;
 
 export class ApiError extends Error {
   readonly status: number | null;
@@ -18,6 +21,7 @@ export class ApiError extends Error {
   readonly retryable: boolean;
   readonly shouldNavigateToAuth: boolean;
   readonly failure: ApiFailure;
+  readonly fieldErrors: Record<string, string>;
 
   constructor(failure: ApiFailure) {
     super(failure.message);
@@ -28,11 +32,12 @@ export class ApiError extends Error {
     this.retryable = failure.retryable;
     this.shouldNavigateToAuth = failure.shouldNavigateToAuth;
     this.failure = failure;
+    this.fieldErrors = failure.fieldErrors;
   }
 }
 
 export async function fetchJson<T>(input: RequestInfo | URL, init?: FetchJsonOptions): Promise<T> {
-  const { suppressAuthRedirect = false, ...requestInit } = init ?? {};
+  const { suppressAuthRedirect = false, skipRefresh = false, ...requestInit } = init ?? {};
   let response: Response;
   try {
     response = await fetch(input, {
@@ -57,6 +62,13 @@ export async function fetchJson<T>(input: RequestInfo | URL, init?: FetchJsonOpt
     return (await response.json()) as T;
   }
 
+  if (response.status === 401 && !suppressAuthRedirect && !skipRefresh) {
+    const refreshed = await refreshSession();
+    if (refreshed) {
+      return fetchJson<T>(input, { ...init, skipRefresh: true });
+    }
+  }
+
   const payload = (await safeReadError(response)) ?? {
     errorCode: "unexpected_error",
     message: `Request failed with status ${response.status}.`
@@ -64,6 +76,9 @@ export async function fetchJson<T>(input: RequestInfo | URL, init?: FetchJsonOpt
   const failure = classifyHttpFailure(response.status, payload);
 
   if (failure.shouldNavigateToAuth && !suppressAuthRedirect) {
+    if (response.status === 401) {
+      clearStoredSession();
+    }
     navigateToStatusPage(response.status);
     throw new ApiError(failure);
   }
@@ -90,10 +105,48 @@ async function safeReadError(response: Response): Promise<ApiErrorPayload | null
 }
 
 function navigateToStatusPage(status: number) {
-  const path = status === 401 ? "/unauthorized" : "/forbidden";
+  const path = status === 401 ? "/login" : "/forbidden";
   if (window.location.pathname !== path) {
     window.history.pushState({}, "", path);
   }
 
   window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
+async function refreshSession(): Promise<boolean> {
+  if (refreshPromise) {
+    return refreshPromise;
+  }
+
+  refreshPromise = performRefresh();
+  try {
+    return await refreshPromise;
+  } finally {
+    refreshPromise = null;
+  }
+}
+
+async function performRefresh(): Promise<boolean> {
+  const refreshToken = getStoredRefreshToken();
+  if (!refreshToken) {
+    return false;
+  }
+
+  try {
+    const response = await fetch("/api/security/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken })
+    });
+    if (!response.ok) {
+      clearStoredSession();
+      return false;
+    }
+
+    const session = await response.json() as SecurityLoginResponse;
+    storeSession(session.accessToken, session.refreshToken, session.user);
+    return true;
+  } catch {
+    return false;
+  }
 }

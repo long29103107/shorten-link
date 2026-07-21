@@ -48,6 +48,12 @@ import {
   hasShortLinkDiscoveryCriteria,
   ShortLinkDiscoveryToolbar
 } from "../components/ShortLinkDiscoveryToolbar";
+import {
+  hasShortLinkFieldErrors,
+  mapShortLinkApiFieldErrors,
+  validateShortLinkForm,
+  type ShortLinkFieldErrors
+} from "../validation";
 
 type ShortLinkAdminPageProps = {
   onDirtyChange?: (isDirty: boolean) => void;
@@ -59,11 +65,6 @@ type ConfirmAction = {
   confirmLabel: string;
   variant?: "default" | "destructive";
   onConfirm: () => void;
-};
-
-type EditorFieldErrors = {
-  originalUrl?: string;
-  expiredAtLocal?: string;
 };
 
 export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
@@ -80,7 +81,7 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
   const [editingCode, setEditingCode] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ originalUrl: "", expiredAtLocal: "" });
   const [initialEditForm, setInitialEditForm] = useState({ originalUrl: "", expiredAtLocal: "" });
-  const [fieldErrors, setFieldErrors] = useState<EditorFieldErrors>({});
+  const [fieldErrors, setFieldErrors] = useState<ShortLinkFieldErrors>({});
   const [editorRequestError, setEditorRequestError] = useState<string | null>(null);
   const [tooltip, setTooltip] = useState<{ text: string; x: number; y: number } | null>(null);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
@@ -299,54 +300,18 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
   };
 
   const validateEditorForm = () => {
-    const nextErrors: EditorFieldErrors = {};
-
-    if (!editForm.originalUrl.trim()) {
-      nextErrors.originalUrl = "Paste a full destination URL to shorten.";
-    } else {
-      try {
-        const url = new URL(editForm.originalUrl);
-        if (url.protocol !== "http:" && url.protocol !== "https:") {
-          nextErrors.originalUrl = "Use an http:// or https:// link.";
-        }
-      } catch {
-        nextErrors.originalUrl = "The destination URL does not look valid yet.";
-      }
-    }
-
-    if (!editForm.expiredAtLocal) {
-      nextErrors.expiredAtLocal = "Choose an expiry time.";
-    } else {
-      const expiry = new Date(editForm.expiredAtLocal);
-      if (Number.isNaN(expiry.getTime()) || expiry.getTime() <= Date.now()) {
-        nextErrors.expiredAtLocal = "Choose an expiry time in the future.";
-      }
-    }
-
-    return nextErrors;
+    return validateShortLinkForm(editForm);
   };
 
   const applyApiFieldError = (error: ApiError) => {
-    if (error.errorCode === "invalid_url") {
-      setFieldErrors({
-        originalUrl: toFriendlyErrorMessage(error.errorCode, error.message)
-      });
-      return true;
-    }
-
-    if (error.errorCode === "invalid_expiration") {
-      setFieldErrors({
-        expiredAtLocal: toFriendlyErrorMessage(error.errorCode, error.message)
-      });
-      return true;
-    }
-
-    return false;
+    const nextErrors = mapShortLinkApiFieldErrors(error.fieldErrors);
+    setFieldErrors(nextErrors);
+    return hasShortLinkFieldErrors(nextErrors);
   };
 
   const handleCreate = async () => {
     const nextErrors = validateEditorForm();
-    if (nextErrors.originalUrl || nextErrors.expiredAtLocal) {
+    if (hasShortLinkFieldErrors(nextErrors)) {
       setFieldErrors(nextErrors);
       return;
     }
@@ -398,7 +363,7 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
 
   const handleSaveEdit = async (code: string) => {
     const nextErrors = validateEditorForm();
-    if (nextErrors.originalUrl || nextErrors.expiredAtLocal) {
+    if (hasShortLinkFieldErrors(nextErrors)) {
       setFieldErrors(nextErrors);
       return;
     }

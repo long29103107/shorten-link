@@ -387,6 +387,45 @@ public sealed class ShortLinkEndpointsTests
     }
 
     [Fact]
+    public async Task SecurityRefresh_RotatesTokenPairAndRefreshTokenCannotAuthorizeApis()
+    {
+        await using var factory = new ShortLinkApiFactory(
+            enableFrontendFallback: false,
+            securityEnabled: true);
+        using var client = factory.CreateClient();
+
+        using var loginResponse = await client.PostAsJsonAsync("/api/security/login", new
+        {
+            username = "admin",
+            password = "admin"
+        });
+        var login = await loginResponse.Content.ReadFromJsonAsync<SecurityLoginResponse>();
+        Assert.NotNull(login);
+        Assert.False(string.IsNullOrWhiteSpace(login.AccessToken));
+        Assert.False(string.IsNullOrWhiteSpace(login.RefreshToken));
+        Assert.Equal(login.Token, login.AccessToken);
+
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
+            "Bearer",
+            login.RefreshToken);
+        using var rejectedMeResponse = await client.GetAsync("/api/security/me");
+        Assert.Equal(HttpStatusCode.Unauthorized, rejectedMeResponse.StatusCode);
+
+        client.DefaultRequestHeaders.Authorization = null;
+        using var refreshResponse = await client.PostAsJsonAsync("/api/security/refresh", new
+        {
+            refreshToken = login.RefreshToken
+        });
+        var refreshed = await refreshResponse.Content.ReadFromJsonAsync<SecurityLoginResponse>();
+
+        Assert.Equal(HttpStatusCode.OK, refreshResponse.StatusCode);
+        Assert.NotNull(refreshed);
+        Assert.NotEqual(login.AccessToken, refreshed.AccessToken);
+        Assert.NotEqual(login.RefreshToken, refreshed.RefreshToken);
+        Assert.Equal("admin", refreshed.User.Username);
+    }
+
+    [Fact]
     public async Task SecurityLogin_ReturnsGenericFailureForUnknownOrBadPassword()
     {
         await using var factory = new ShortLinkApiFactory(
@@ -2137,6 +2176,8 @@ public sealed class ShortLinkEndpointsTests
 
     private sealed record SecurityLoginResponse(
         string Token,
+        string AccessToken,
+        string RefreshToken,
         SecurityCurrentUserResponse User);
 
     private sealed record SecurityCurrentUserResponse(

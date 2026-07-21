@@ -48,6 +48,16 @@ describe("shared API failure policy", () => {
       retryable: false
     });
   });
+
+  test("preserves additive field errors on validation failures", () => {
+    expect(classifyHttpFailure(400, {
+      errorCode: "invalid_url",
+      message: "Invalid URL",
+      fieldErrors: { originalUrl: "Use an absolute HTTP or HTTPS URL." }
+    }).fieldErrors).toEqual({
+      originalUrl: "Use an absolute HTTP or HTTPS URL."
+    });
+  });
 });
 
 describe("error toast deduplication", () => {

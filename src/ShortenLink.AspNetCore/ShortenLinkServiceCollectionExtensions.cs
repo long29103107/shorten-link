@@ -65,6 +65,9 @@ public static class ShortenLinkServiceCollectionExtensions
             .Validate(
                 static options => options.Security.SessionTokenTtlMinutes > 0,
                 "ShortenLink:Security:SessionTokenTtlMinutes must be greater than 0.")
+            .Validate(
+                static options => options.Security.RefreshTokenTtlMinutes > 0,
+                "ShortenLink:Security:RefreshTokenTtlMinutes must be greater than 0.")
             .ValidateOnStart();
 
         services.AddDbContext<ShortLinkDbContext>((serviceProvider, options) =>

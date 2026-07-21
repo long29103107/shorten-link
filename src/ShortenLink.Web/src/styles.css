@@ -689,7 +689,97 @@ code {
 .login-panel {
   width: min(520px, 100%);
   min-height: auto;
-  margin-top: 34px;
+}
+
+.status-shell .login-panel {
+  width: min(520px, 100%);
+}
+
+.security-form-card {
+  align-self: start;
+  min-height: auto;
+}
+
+.security-form-card .ui-card-content {
+  display: grid;
+  gap: 14px;
+}
+
+.security-tab-stack {
+  display: grid;
+  gap: 18px;
+}
+
+.security-list-header h3 {
+  margin: 0;
+}
+
+.security-tab-stack .admin-discovery-toolbar {
+  grid-template-columns: minmax(240px, 1fr) repeat(3, minmax(150px, 0.24fr));
+}
+
+.table-link-button {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 850;
+  text-decoration: underline;
+  text-decoration-color: rgba(238, 104, 76, 0.48);
+  text-underline-offset: 4px;
+}
+
+.pagination-page-size select {
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 850;
+}
+
+.selected-user-panel {
+  min-height: auto;
+}
+
+.security-user-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.security-action-section {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card-muted);
+  padding: 16px;
+}
+
+.security-action-section h3 {
+  margin: 0;
+}
+
+.permission-catalog {
+  margin-top: 18px;
+}
+
+.permission-catalog-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.permission-catalog-grid code {
+  overflow-wrap: anywhere;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card-muted);
+  padding: 12px;
 }
 
 .admin-panel > .ui-card-content {
@@ -1672,6 +1762,8 @@ code {
 
   .security-dialog-grid,
   .security-permission-grid,
+  .security-user-actions-grid,
+  .permission-catalog-grid,
   .security-assignment-item dl {
     grid-template-columns: 1fr;
   }

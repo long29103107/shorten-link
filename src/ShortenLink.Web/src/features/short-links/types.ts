@@ -129,6 +129,8 @@ export type SecurityCurrentUser = {
 
 export type SecurityLoginResponse = {
   token: string;
+  accessToken: string;
+  refreshToken: string;
   user: SecurityCurrentUser;
 };
 
@@ -212,6 +214,7 @@ export type SecurityUserApiKeyDisabled = {
 export type ApiErrorPayload = {
   errorCode: string;
   message: string;
+  fieldErrors?: Record<string, string>;
 };
 
 export function formatDateTime(value: string | null): string {

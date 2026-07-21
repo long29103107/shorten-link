@@ -16,11 +16,13 @@ export type ApiFailure = {
   message: string;
   retryable: boolean;
   shouldNavigateToAuth: boolean;
+  fieldErrors: Record<string, string>;
 };
 
 export type ApiFailurePayload = {
   errorCode: string;
   message: string;
+  fieldErrors?: Record<string, string | string[]>;
 };
 
 export function classifyHttpFailure(status: number, payload: ApiFailurePayload): ApiFailure {
@@ -63,7 +65,8 @@ export function classifyFetchFailure(error: unknown): ApiFailure {
       errorCode: "request_timeout",
       message: "The request timed out.",
       retryable: true,
-      shouldNavigateToAuth: false
+      shouldNavigateToAuth: false,
+      fieldErrors: {}
     };
   }
 
@@ -73,7 +76,8 @@ export function classifyFetchFailure(error: unknown): ApiFailure {
     errorCode: "network_error",
     message: "The server could not be reached.",
     retryable: true,
-    shouldNavigateToAuth: false
+    shouldNavigateToAuth: false,
+    fieldErrors: {}
   };
 }
 
@@ -90,8 +94,24 @@ function createFailure(
     errorCode: payload.errorCode,
     message: payload.message,
     retryable,
-    shouldNavigateToAuth
+    shouldNavigateToAuth,
+    fieldErrors: normalizeFieldErrors(payload.fieldErrors)
   };
+}
+
+function normalizeFieldErrors(
+  fieldErrors: ApiFailurePayload["fieldErrors"]
+): Record<string, string> {
+  if (!fieldErrors) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(fieldErrors).flatMap(([field, messages]) => {
+      const message = Array.isArray(messages) ? messages.find(Boolean) : messages;
+      return message ? [[field, message]] : [];
+    })
+  );
 }
 
 function isAbortError(error: unknown) {

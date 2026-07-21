@@ -59,6 +59,9 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
         security.MapPost("/login", LoginSecurityUserAsync)
             .WithName("LoginSecurityUser");
 
+        security.MapPost("/refresh", RefreshSecurityUserAsync)
+            .WithName("RefreshSecurityUser");
+
         security.MapGet("/me", GetCurrentSecurityUserAsync)
             .WithName("GetCurrentSecurityUser");
 
@@ -152,14 +155,41 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
         var login = await userSessionService
             .LoginAsync(request.Username, request.Password, cancellationToken)
             .ConfigureAwait(false);
-        if (!login.Succeeded || login.Principal is null || string.IsNullOrWhiteSpace(login.Token))
+        if (!login.Succeeded
+            || login.Principal is null
+            || string.IsNullOrWhiteSpace(login.Token)
+            || string.IsNullOrWhiteSpace(login.RefreshToken))
         {
             return CreateErrorResponse(login.ErrorCode, login.ErrorMessage);
         }
 
         return TypedResults.Ok(new SecurityLoginResponse(
             login.Token,
+            login.Token,
+            login.RefreshToken!,
             SecurityCurrentUserResponse.FromPrincipal(login.Principal)));
+    }
+
+    private static async Task<Results<Ok<SecurityLoginResponse>, JsonHttpResult<ShortLinkErrorResponse>>> RefreshSecurityUserAsync(
+        SecurityRefreshRequest request,
+        IShortenLinkUserSessionService userSessionService,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var refreshed = await userSessionService.RefreshAsync(request.RefreshToken, cancellationToken).ConfigureAwait(false);
+        if (!refreshed.Succeeded
+            || refreshed.Principal is null
+            || string.IsNullOrWhiteSpace(refreshed.Token)
+            || string.IsNullOrWhiteSpace(refreshed.RefreshToken))
+        {
+            return CreateErrorResponse(refreshed.ErrorCode, refreshed.ErrorMessage);
+        }
+
+        return TypedResults.Ok(new SecurityLoginResponse(
+            refreshed.Token,
+            refreshed.Token,
+            refreshed.RefreshToken,
+            SecurityCurrentUserResponse.FromPrincipal(refreshed.Principal)));
     }
 
     private static async Task<Results<Ok<SecurityCurrentUserResponse>, JsonHttpResult<ShortLinkErrorResponse>>> GetCurrentSecurityUserAsync(
@@ -1387,8 +1417,12 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
         string Username,
         string Password);
 
+    public sealed record SecurityRefreshRequest(string RefreshToken);
+
     public sealed record SecurityLoginResponse(
         string Token,
+        string AccessToken,
+        string RefreshToken,
         SecurityCurrentUserResponse User);
 
     public sealed record SecurityCurrentUserResponse(

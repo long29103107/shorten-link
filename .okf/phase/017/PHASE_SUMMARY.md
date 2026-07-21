@@ -1,12 +1,12 @@
 ---
 phase: 017
 title: Validation Parity And Field Error Mapping
-status: active
+status: done
 created_at: 2026-07-20
-updated_at: 2026-07-20
+updated_at: 2026-07-21
 current_task: null
-task_count: 1
-done_count: 1
+task_count: 4
+done_count: 4
 depends_on:
   - 016
 ---
@@ -51,18 +51,24 @@ Out:
 | Task | Title | Status | Done At |
 |---|---|---|---|
 | 017_001 | Field-aware API validation error contract | done | 2026-07-20T16:23:23+07:00 |
+| 017_002 | Short-link frontend validation parity and field mapping | done | 2026-07-21T09:19:08+07:00 |
+| 017_003 | Login and managed user form parity | done | 2026-07-21T10:15:00+07:00 |
+| 017_004 | Security identity tab workflow and validation parity | done | 2026-07-21T13:30:55+07:00 |
 
 ## Current Task
 
-No active task. `017_001` is complete.
+No active task. Phase 017 is complete.
 
 ## Completed Notes
 
 - `017_001` added a backward-compatible field-aware API validation error contract across short-link and security requests, documented it, and verified it with the backend build and 67 API tests.
+- `017_002` centralized deterministic short-link form validation, preserved API `fieldErrors` through the frontend failure model, mapped URL and expiration failures to exact create/update controls, and verified the result with 23 Bun tests and a production frontend build.
+- `017_003` aligned login and protected managed-user registration/update with the 401-style card language, added exact identity field validation/mapping, normalized array-valued API field metadata, and verified the result with 27 Bun tests and a production frontend build.
+- `017_004` reduced registration to email/display name/password, separated password reset and role assignment, reorganized Security into Users/Roles/Permissions, and verified field mapping with 29 Bun tests and a production frontend build.
 
 ## Next Task Proposal
 
-Create `017_002` to consume `fieldErrors` in the short-link create/update frontend, centralize matching client validation rules, and add focused Bun tests.
+Phase 017 is complete. Propose phase 018 from the next ordered product-vision gap before creating it.
 
 ## Task Notes
 

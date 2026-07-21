@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useState } from "react";
 import { ApiError } from "../api/http";
 import { createShortLink } from "../api/shortLinksApi";
 import type { CreatedShortLink, ShortLinkFormInput } from "../types";
@@ -9,6 +9,12 @@ import { Input } from "../../../shared/components/ui/input";
 import { Label } from "../../../shared/components/ui/label";
 import { showToast } from "../../../shared/toast";
 import { ExpiryQuickPicks } from "./ExpiryQuickPicks";
+import {
+  hasShortLinkFieldErrors,
+  mapShortLinkApiFieldErrors,
+  validateShortLinkForm,
+  type ShortLinkFieldErrors
+} from "../validation";
 
 type CreateShortLinkFormProps = {
   onCreated: (createdLink: CreatedShortLink) => void;
@@ -24,43 +30,21 @@ export function CreateShortLinkForm({
 }: CreateShortLinkFormProps) {
   const [form, setForm] = useState(initialForm);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<ShortLinkFieldErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const localValidationMessage = useMemo(() => {
-    if (!form.originalUrl.trim()) {
-      return "Paste a full destination URL to shorten.";
-    }
-
-    try {
-      const url = new URL(form.originalUrl);
-      if (url.protocol !== "http:" && url.protocol !== "https:") {
-        return "Use an http:// or https:// link.";
-      }
-    } catch {
-      return "The destination URL does not look valid yet.";
-    }
-
-    if (!form.expiredAtLocal) {
-      return "Choose an expiry time.";
-    }
-
-    const expiry = new Date(form.expiredAtLocal);
-    if (Number.isNaN(expiry.getTime()) || expiry.getTime() <= Date.now()) {
-      return "Choose an expiry time in the future.";
-    }
-
-    return null;
-  }, [form]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (localValidationMessage) {
-      setErrorMessage(localValidationMessage);
+    const nextErrors = validateShortLinkForm(form);
+    if (hasShortLinkFieldErrors(nextErrors)) {
+      setFieldErrors(nextErrors);
+      setErrorMessage(null);
       return;
     }
 
     setIsSubmitting(true);
+    setFieldErrors({});
     setErrorMessage(null);
 
     try {
@@ -77,6 +61,11 @@ export function CreateShortLinkForm({
       });
     } catch (error) {
       if (error instanceof ApiError) {
+        const apiFieldErrors = mapShortLinkApiFieldErrors(error.fieldErrors);
+        if (hasShortLinkFieldErrors(apiFieldErrors)) {
+          setFieldErrors(apiFieldErrors);
+          return;
+        }
         setErrorMessage(toFriendlyErrorMessage(error.errorCode, error.message));
       } else {
         setErrorMessage("We hit an unexpected problem while creating the link.");
@@ -104,10 +93,15 @@ export function CreateShortLinkForm({
           required
           placeholder="https://example.com/really/long/path"
           value={form.originalUrl}
+          aria-invalid={fieldErrors.originalUrl ? "true" : undefined}
+          aria-describedby={fieldErrors.originalUrl ? "create-original-url-error" : undefined}
           onChange={(event) =>
             setForm((current) => ({ ...current, originalUrl: event.target.value }))
           }
         />
+        {fieldErrors.originalUrl ? (
+          <span id="create-original-url-error" className="field-error">{fieldErrors.originalUrl}</span>
+        ) : null}
       </Label>
 
       <div className="field-grid">
@@ -119,10 +113,15 @@ export function CreateShortLinkForm({
             type="datetime-local"
             required
             value={form.expiredAtLocal}
+            aria-invalid={fieldErrors.expiredAtLocal ? "true" : undefined}
+            aria-describedby={fieldErrors.expiredAtLocal ? "create-expiry-error" : undefined}
             onChange={(event) =>
               setForm((current) => ({ ...current, expiredAtLocal: event.target.value }))
             }
           />
+          {fieldErrors.expiredAtLocal ? (
+            <span id="create-expiry-error" className="field-error">{fieldErrors.expiredAtLocal}</span>
+          ) : null}
           <ExpiryQuickPicks
             onChange={(expiredAtLocal) =>
               setForm((current) => ({ ...current, expiredAtLocal }))
@@ -140,7 +139,11 @@ export function CreateShortLinkForm({
         </Button>
         <Button
           variant="secondary"
-          onClick={() => setForm(initialForm)}
+          onClick={() => {
+            setForm(initialForm);
+            setFieldErrors({});
+            setErrorMessage(null);
+          }}
           disabled={isSubmitting}
         >
           Clear

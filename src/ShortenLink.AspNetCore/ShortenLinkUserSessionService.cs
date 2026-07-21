@@ -15,6 +15,10 @@ public interface IShortenLinkUserSessionService
         string password,
         CancellationToken cancellationToken = default);
 
+    Task<ShortenLinkUserSessionResult> RefreshAsync(
+        string refreshToken,
+        CancellationToken cancellationToken = default);
+
     Task<ShortenLinkUserSessionResult> GetCurrentUserAsync(
         HttpContext httpContext,
         CancellationToken cancellationToken = default);
@@ -38,19 +42,21 @@ public sealed record ShortenLinkUserSessionResult(
     bool IsAuthenticated,
     ShortenLinkUserSessionPrincipal? Principal,
     string? Token,
+    string? RefreshToken,
     string? ErrorCode,
     string? ErrorMessage)
 {
     public static ShortenLinkUserSessionResult Success(
         ShortenLinkUserSessionPrincipal principal,
-        string? token) =>
-        new(true, true, principal, token, null, null);
+        string? token,
+        string? refreshToken = null) =>
+        new(true, true, principal, token, refreshToken, null, null);
 
     public static ShortenLinkUserSessionResult Unauthorized() =>
-        new(false, false, null, null, "unauthorized", "A valid user session is required.");
+        new(false, false, null, null, null, "unauthorized", "A valid user session is required.");
 
     public static ShortenLinkUserSessionResult InvalidLogin() =>
-        new(false, false, null, null, "invalid_login", "Username or password is invalid.");
+        new(false, false, null, null, null, "invalid_login", "Username or password is invalid.");
 }
 
 public sealed class ShortenLinkUserSessionService(
@@ -84,8 +90,39 @@ public sealed class ShortenLinkUserSessionService(
 
         var issuedAtUtc = timeProvider.GetUtcNow();
         var principal = await CreatePrincipalAsync(user, issuedAtUtc, cancellationToken).ConfigureAwait(false);
-        var token = CreateToken(user, issuedAtUtc);
-        return ShortenLinkUserSessionResult.Success(principal, token);
+        return ShortenLinkUserSessionResult.Success(
+            principal,
+            CreateToken(user, issuedAtUtc, "access"),
+            CreateToken(user, issuedAtUtc, "refresh"));
+    }
+
+    public async Task<ShortenLinkUserSessionResult> RefreshAsync(
+        string refreshToken,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(refreshToken))
+        {
+            return ShortenLinkUserSessionResult.Unauthorized();
+        }
+
+        var payload = ValidateToken(refreshToken, "refresh");
+        if (payload is null)
+        {
+            return ShortenLinkUserSessionResult.Unauthorized();
+        }
+
+        var user = await userRepository.FindByIdAsync(payload.UserId, cancellationToken).ConfigureAwait(false);
+        if (user is null || !user.IsEnabled)
+        {
+            return ShortenLinkUserSessionResult.Unauthorized();
+        }
+
+        var issuedAtUtc = timeProvider.GetUtcNow();
+        var principal = await CreatePrincipalAsync(user, issuedAtUtc, cancellationToken).ConfigureAwait(false);
+        return ShortenLinkUserSessionResult.Success(
+            principal,
+            CreateToken(user, issuedAtUtc, "access"),
+            CreateToken(user, issuedAtUtc, "refresh"));
     }
 
     public async Task<ShortenLinkUserSessionResult> GetCurrentUserAsync(
@@ -100,7 +137,7 @@ public sealed class ShortenLinkUserSessionService(
             return ShortenLinkUserSessionResult.Unauthorized();
         }
 
-        var payload = ValidateToken(token);
+        var payload = ValidateToken(token, "access");
         if (payload is null)
         {
             return ShortenLinkUserSessionResult.Unauthorized();
@@ -165,12 +202,13 @@ public sealed class ShortenLinkUserSessionService(
             issuedAtUtc);
     }
 
-    private string CreateToken(ShortenLinkSecurityUser user, DateTimeOffset issuedAtUtc)
+    private string CreateToken(ShortenLinkSecurityUser user, DateTimeOffset issuedAtUtc, string kind)
     {
         var payload = new SessionTokenPayload(
             user.Id,
             user.Username,
             issuedAtUtc.ToUnixTimeSeconds(),
+            kind,
             Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant());
         var payloadJson = JsonSerializer.Serialize(payload, SerializerOptions);
         var payloadSegment = Base64UrlEncode(Encoding.UTF8.GetBytes(payloadJson));
@@ -179,7 +217,7 @@ public sealed class ShortenLinkUserSessionService(
         return $"{payloadSegment}.{signatureSegment}";
     }
 
-    private SessionTokenPayload? ValidateToken(string token)
+    private SessionTokenPayload? ValidateToken(string token, string expectedKind)
     {
         var parts = token.Split('.', 2);
         if (parts.Length != 2)
@@ -219,12 +257,16 @@ public sealed class ShortenLinkUserSessionService(
             return null;
         }
 
-        if (payload is null || string.IsNullOrWhiteSpace(payload.UserId))
+        if (payload is null
+            || string.IsNullOrWhiteSpace(payload.UserId)
+            || !string.Equals(payload.Kind, expectedKind, StringComparison.Ordinal))
         {
             return null;
         }
 
-        var ttlMinutes = Math.Max(options.Value.Security.SessionTokenTtlMinutes, 1);
+        var ttlMinutes = expectedKind == "refresh"
+            ? Math.Max(options.Value.Security.RefreshTokenTtlMinutes, 1)
+            : Math.Max(options.Value.Security.SessionTokenTtlMinutes, 1);
         var expiresAtUtc = DateTimeOffset
             .FromUnixTimeSeconds(payload.IssuedAtUnixSeconds)
             .AddMinutes(ttlMinutes);
@@ -287,5 +329,6 @@ public sealed class ShortenLinkUserSessionService(
         string UserId,
         string Username,
         long IssuedAtUnixSeconds,
+        string Kind,
         string Nonce);
 }

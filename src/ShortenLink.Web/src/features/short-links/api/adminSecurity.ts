@@ -14,7 +14,9 @@ export const shortLinkPermissions = {
 } as const;
 
 const allPermissions = Object.values(shortLinkPermissions);
-const sessionTokenKey = "shortenLink.sessionToken";
+const accessTokenKey = "shortenLink.accessToken";
+const refreshTokenKey = "shortenLink.refreshToken";
+const legacySessionTokenKey = "shortenLink.sessionToken";
 const currentUserKey = "shortenLink.currentUser";
 
 const rolePermissionBundles: Record<string, readonly string[]> = {
@@ -44,7 +46,12 @@ export type AdminPermissionState = {
 };
 
 export function getStoredSessionToken(): string | null {
-  return window.localStorage.getItem(sessionTokenKey);
+  return window.localStorage.getItem(accessTokenKey)
+    ?? window.localStorage.getItem(legacySessionTokenKey);
+}
+
+export function getStoredRefreshToken(): string | null {
+  return window.localStorage.getItem(refreshTokenKey);
 }
 
 export function getStoredCurrentUser(): SecurityCurrentUser | null {
@@ -61,14 +68,18 @@ export function getStoredCurrentUser(): SecurityCurrentUser | null {
   }
 }
 
-export function storeSession(token: string, user: SecurityCurrentUser): void {
-  window.localStorage.setItem(sessionTokenKey, token);
+export function storeSession(accessToken: string, refreshToken: string, user: SecurityCurrentUser): void {
+  window.localStorage.setItem(accessTokenKey, accessToken);
+  window.localStorage.setItem(refreshTokenKey, refreshToken);
+  window.localStorage.removeItem(legacySessionTokenKey);
   window.localStorage.setItem(currentUserKey, JSON.stringify(user));
   window.dispatchEvent(new Event("shortenlink-auth-changed"));
 }
 
 export function clearStoredSession(): void {
-  window.localStorage.removeItem(sessionTokenKey);
+  window.localStorage.removeItem(accessTokenKey);
+  window.localStorage.removeItem(refreshTokenKey);
+  window.localStorage.removeItem(legacySessionTokenKey);
   window.localStorage.removeItem(currentUserKey);
   window.dispatchEvent(new Event("shortenlink-auth-changed"));
 }

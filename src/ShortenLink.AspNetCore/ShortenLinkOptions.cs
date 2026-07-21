@@ -83,6 +83,8 @@ public sealed class ShortenLinkSecurityOptions
 
     public int SessionTokenTtlMinutes { get; set; } = 480;
 
+    public int RefreshTokenTtlMinutes { get; set; } = 10080;
+
     public IList<ShortenLinkApiKeyOptions> ApiKeys { get; set; } = new List<ShortenLinkApiKeyOptions>();
 }
 

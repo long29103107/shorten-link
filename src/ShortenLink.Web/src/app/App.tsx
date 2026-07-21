@@ -4,6 +4,7 @@ import {
   clearStoredSession,
   getAdminPermissionState,
   getStoredCurrentUser,
+  getStoredRefreshToken,
   getStoredSessionToken,
   storeSession
 } from "../features/short-links/api/adminSecurity";
@@ -20,7 +21,9 @@ import { Toaster } from "../shared/components/Toaster";
 import { parseRoute } from "./router";
 
 export function App() {
-  const [route, setRoute] = useState<AppRoute>(() => parseRoute(window.location.pathname));
+  const [route, setRoute] = useState<AppRoute>(() =>
+    getStoredSessionToken() ? parseRoute(window.location.pathname) : { kind: "login" }
+  );
   const [recentLink, setRecentLink] = useState<CreatedShortLink | null>(null);
   const [hasAdminEditChanges, setHasAdminEditChanges] = useState(false);
   const [pendingNavigationPath, setPendingNavigationPath] = useState<string | null>(null);
@@ -29,7 +32,12 @@ export function App() {
 
   useEffect(() => {
     const handleAuthChanged = () => {
-      setCurrentUser(getStoredCurrentUser());
+      const nextUser = getStoredCurrentUser();
+      setCurrentUser(nextUser);
+      if (!getStoredSessionToken() && window.location.pathname !== "/login") {
+        window.history.replaceState({}, "", "/login");
+        setRoute({ kind: "login" });
+      }
     };
 
     window.addEventListener("shortenlink-auth-changed", handleAuthChanged);
@@ -39,6 +47,9 @@ export function App() {
   useEffect(() => {
     const token = getStoredSessionToken();
     if (!token) {
+      if (window.location.pathname !== "/login") {
+        window.history.replaceState({}, "", "/login");
+      }
       return;
     }
 
@@ -46,7 +57,12 @@ export function App() {
     void getCurrentSecurityUser()
       .then((user) => {
         if (isCurrent) {
-          storeSession(token, user);
+          const refreshToken = getStoredRefreshToken();
+          if (refreshToken) {
+            storeSession(token, refreshToken, user);
+          } else {
+            clearStoredSession();
+          }
         }
       })
       .catch(() => {
@@ -63,6 +79,11 @@ export function App() {
   useEffect(() => {
     const handlePopState = () => {
       const nextPath = window.location.pathname;
+      if (!getStoredSessionToken() && nextPath !== "/login") {
+        window.history.replaceState({}, "", "/login");
+        setRoute({ kind: "login" });
+        return;
+      }
       if (route.kind === "admin" && hasAdminEditChanges && nextPath !== "/admin") {
         window.history.pushState({}, "", "/admin");
         setPendingNavigationPath(nextPath);
@@ -81,7 +102,10 @@ export function App() {
     return () => window.removeEventListener("popstate", handlePopState);
   }, [hasAdminEditChanges, route.kind]);
 
-  const commitNavigation = (path: string) => {
+  const commitNavigation = (requestedPath: string) => {
+    const path = !getStoredSessionToken() && requestedPath !== "/login"
+      ? "/login"
+      : requestedPath;
     if (window.location.pathname !== path) {
       window.history.pushState({}, "", path);
     }
@@ -136,13 +160,20 @@ export function App() {
           ? "Return to the short-link workspace"
           : "Random short-link creation";
 
-  if (route.kind === "status") {
+  if (route.kind === "status" || route.kind === "login") {
     return (
       <div className="status-shell">
-        <StatusPage
-          statusCode={route.statusCode}
-          onBackHome={() => navigate("/")}
-        />
+        {route.kind === "status" ? (
+          <StatusPage
+            statusCode={route.statusCode}
+            onBackHome={() => navigate("/")}
+          />
+        ) : (
+          <LoginPage
+            onSignedIn={() => navigate("/security")}
+            onBackHome={() => navigate("/")}
+          />
+        )}
         <ConfirmDialog
           open={pendingNavigationPath !== null}
           title="Discard form changes?"
@@ -222,7 +253,6 @@ export function App() {
           ) : (
             <Button
               className="sidebar-nav-button"
-              aria-current={route.kind === "login" ? "page" : undefined}
               variant="ghost"
               onClick={() => navigate("/login")}
             >
@@ -256,10 +286,6 @@ export function App() {
 
         {route.kind === "security" ? (
           <SecurityManagementPage />
-        ) : null}
-
-        {route.kind === "login" ? (
-          <LoginPage onSignedIn={() => navigate("/security")} />
         ) : null}
 
         {route.kind === "detail" ? (

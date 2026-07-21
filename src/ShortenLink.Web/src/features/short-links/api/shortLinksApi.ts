@@ -42,9 +42,7 @@ export async function loginSecurityUser(
 }
 
 export async function getCurrentSecurityUser(): Promise<SecurityCurrentUser> {
-  return fetchJson<SecurityCurrentUser>("/api/security/me", {
-    suppressAuthRedirect: true
-  });
+  return fetchJson<SecurityCurrentUser>("/api/security/me");
 }
 
 export async function createShortLink(
