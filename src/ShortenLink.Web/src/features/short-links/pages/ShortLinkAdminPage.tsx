@@ -54,6 +54,7 @@ import {
   validateShortLinkForm,
   type ShortLinkFieldErrors
 } from "../validation";
+import { toggleShortLinkSort } from "../queryExpression";
 
 type ShortLinkAdminPageProps = {
   onDirtyChange?: (isDirty: boolean) => void;
@@ -667,6 +668,10 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
     setDiscoveryQuery(change.query);
   };
 
+  const handleTableSort = (sortBy: ShortLinkDiscoveryQuery["sortBy"]) => {
+    handleDiscoveryChange(toggleShortLinkSort(discoveryQuery, sortBy));
+  };
+
   const hasRowActions = (link: ShortLinkAdminItem) =>
     adminPermissions.canReadAnalytics
     || adminPermissions.canUpdate
@@ -799,11 +804,11 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
                     onChange={togglePageSelected}
                   />
                 </TableHead>
-                <TableHead>Code</TableHead>
-                <TableHead>Destination</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead>Expiry</TableHead>
-                <TableHead>Status</TableHead>
+                <SortableTableHead label="Code" field="code" query={discoveryQuery} onSort={handleTableSort} />
+                <SortableTableHead label="Destination" field="destination" query={discoveryQuery} onSort={handleTableSort} />
+                <SortableTableHead label="Created" field="created" query={discoveryQuery} onSort={handleTableSort} />
+                <SortableTableHead label="Expiry" field="expiry" query={discoveryQuery} onSort={handleTableSort} />
+                <SortableTableHead label="Status" field="status" query={discoveryQuery} onSort={handleTableSort} />
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -1242,6 +1247,23 @@ function toDateTimeLocalValue(value: string | null): string {
 
   const offsetMs = date.getTimezoneOffset() * 60_000;
   return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
+function SortableTableHead({ label, field, query, onSort }: {
+  label: string;
+  field: ShortLinkDiscoveryQuery["sortBy"];
+  query: ShortLinkDiscoveryQuery;
+  onSort: (field: ShortLinkDiscoveryQuery["sortBy"]) => void;
+}) {
+  const active = query.sortBy === field;
+  return (
+    <TableHead aria-sort={active ? (query.sortDirection === "asc" ? "ascending" : "descending") : "none"}>
+      <button type="button" className={active ? "table-sort-button table-sort-button-active" : "table-sort-button"} onClick={() => onSort(field)}>
+        <span>{label}</span>
+        <span className="table-sort-indicator" aria-hidden="true">{active ? (query.sortDirection === "asc" ? "↑" : "↓") : "↕"}</span>
+      </button>
+    </TableHead>
+  );
 }
 
 function getVisiblePages(currentPage: number, totalPages: number): Array<number | "gap"> {

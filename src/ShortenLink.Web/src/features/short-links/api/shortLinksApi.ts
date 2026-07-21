@@ -1,4 +1,6 @@
 import { fetchJson } from "./http";
+import { appendQueryExpression } from "../../../shared/queryExpression";
+import { buildShortLinkFilterExpression, buildShortLinkSortExpression } from "../queryExpression";
 import type {
   CreateShortLinkRequest,
   CreatedShortLink,
@@ -88,6 +90,10 @@ export function buildShortLinkListUrl(
     params.set("status", discovery.status);
     params.set("sortBy", discovery.sortBy);
     params.set("sortDirection", discovery.sortDirection);
+    appendQueryExpression(params, {
+      filter: buildShortLinkFilterExpression(discovery),
+      sort: buildShortLinkSortExpression(discovery)
+    });
   }
 
   return `/api/short-links?${params.toString()}`;

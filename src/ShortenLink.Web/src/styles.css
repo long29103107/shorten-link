@@ -200,13 +200,19 @@ code {
   color: var(--accent-strong);
 }
 
-.nav-glyph {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
+.nav-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
   margin-right: 10px;
-  border: 2px solid currentColor;
-  transform: rotate(45deg);
+  opacity: 0.9;
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.sidebar-nav-button:hover .nav-icon,
+.sidebar-nav-button[aria-current="page"] .nav-icon {
+  opacity: 1;
+  transform: scale(1.06);
 }
 
 .app-main {
@@ -803,6 +809,128 @@ code {
   padding: 12px;
 }
 
+.role-permission-workspace {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.28fr) minmax(520px, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.role-picker,
+.permission-matrix {
+  min-width: 0;
+}
+
+.role-picker-heading,
+.role-editor-heading,
+.permission-row,
+.permission-decision {
+  display: flex;
+  align-items: center;
+}
+
+.role-picker-heading,
+.role-editor-heading,
+.permission-row {
+  justify-content: space-between;
+}
+
+.role-picker-heading h3 {
+  margin: 0;
+}
+
+.role-picker-list,
+.permission-group-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.role-picker-item {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card-muted);
+  color: var(--text);
+  padding: 13px 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.role-picker-item:hover,
+.role-picker-item-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.role-picker-item span { font-weight: 850; }
+.role-picker-item small { color: var(--muted); }
+
+.role-editor-heading {
+  gap: 16px;
+  align-items: end;
+}
+
+.role-editor-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  flex: 1;
+}
+
+.role-editor-actions,
+.permission-decision {
+  display: flex;
+  gap: 6px;
+}
+
+.permission-group-card {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card-muted);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.12);
+}
+
+.permission-row {
+  min-height: 44px;
+  gap: 16px;
+  padding: 8px 14px 8px 26px;
+  border-top: 1px solid var(--border);
+}
+
+.permission-group-row {
+  min-height: 48px;
+  padding-left: 16px;
+  border-top: 0;
+}
+
+.permission-row code {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.permission-toggle {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid currentColor;
+  background: transparent;
+  font-size: 1rem;
+  font-weight: 900;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.permission-toggle:disabled { cursor: default; opacity: 0.72; }
+.permission-allow { color: var(--success); }
+.permission-deny { color: var(--danger); }
+.permission-allow.permission-toggle-active { background: var(--success); color: #14261d; }
+.permission-deny.permission-toggle-active { background: var(--danger); color: #2b1110; }
+
 .admin-panel > .ui-card-content {
   flex: 1;
   display: flex;
@@ -1033,6 +1161,31 @@ code {
   font-weight: 850;
   letter-spacing: 0.05em;
   text-transform: uppercase;
+}
+
+.table-sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  font: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.table-sort-button:hover,
+.table-sort-button-active {
+  color: var(--accent-strong);
+}
+
+.table-sort-indicator {
+  font-size: 0.92rem;
+  line-height: 1;
 }
 
 .ui-table-row:hover .ui-table-cell {
@@ -1746,6 +1899,9 @@ code {
 }
 
 @media (max-width: 980px) {
+  .role-permission-workspace { grid-template-columns: 1fr; }
+  .role-picker-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .role-editor-heading { align-items: stretch; flex-direction: column; }
   :root {
     --content-x-padding: 36px;
   }
@@ -1796,6 +1952,8 @@ code {
 }
 
 @media (max-width: 640px) {
+  .role-picker-list,
+  .role-editor-fields { grid-template-columns: 1fr; }
   .field-grid {
     grid-template-columns: 1fr;
   }

@@ -34,4 +34,5 @@ public sealed class ShortenLinkUserApiKey
     public bool IsEnabled { get; }
 
     public DateTimeOffset CreatedAt { get; }
+
 }

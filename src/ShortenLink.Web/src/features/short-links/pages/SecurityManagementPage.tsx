@@ -44,6 +44,11 @@ import { showToast } from "../../../shared/toast";
 import { createRecoveryNotice, type RecoveryNotice } from "../../../shared/api/recovery";
 
 const permissionOptions = Object.values(shortLinkPermissions);
+const permissionGroups = [
+  { id: "short-links", name: "Short links", permissions: permissionOptions.filter((permission) => permission.startsWith("short_links.")) },
+  { id: "reporting", name: "Reporting and audit", permissions: permissionOptions.filter((permission) => permission === "analytics.read" || permission === "audit_logs.read") },
+  { id: "security", name: "Security", permissions: permissionOptions.filter((permission) => permission.startsWith("security.")) }
+];
 
 export function SecurityManagementPage({ section }: { section: SecuritySection }) {
   const adminPermissions = getAdminPermissionState();
@@ -422,43 +427,17 @@ export function SecurityManagementPage({ section }: { section: SecuritySection }
         ) : null}
 
         {section === "roles" ? (
-          <section className="security-dialog-grid">
-            <Card className="security-form-card">
-              <CardHeader><p className="eyebrow">Role</p><CardTitle>Create custom role</CardTitle></CardHeader>
-              <CardContent>
-                <IdentityField id="role-id" label="Role id" value={roleForm.id} error={roleFieldErrors.id} onChange={(id) => {
-                  setRoleForm((current) => ({ ...current, id }));
-                  setRoleFieldErrors((current) => ({ ...current, id: undefined }));
-                }} />
-                <IdentityField id="role-name" label="Role name" value={roleForm.name} error={roleFieldErrors.name} onChange={(name) => {
-                  setRoleForm((current) => ({ ...current, name }));
-                  setRoleFieldErrors((current) => ({ ...current, name: undefined }));
-                }} />
-                <PermissionChoiceGroup selected={roleForm.permissions} error={roleFieldErrors.permissions} onToggle={(permission) => {
-                  setRoleForm((current) => ({ ...current, permissions: current.permissions.includes(permission) ? current.permissions.filter((value) => value !== permission) : [...current.permissions, permission] }));
-                  setRoleFieldErrors((current) => ({ ...current, permissions: undefined }));
-                }} />
-              </CardContent>
-              <CardFooter><Button onClick={() => void saveRole()}>Save role</Button></CardFooter>
-            </Card>
-            <Card className="security-form-card">
-              <CardHeader><p className="eyebrow">Roles</p><CardTitle>Available access bundles</CardTitle></CardHeader>
-              <CardContent className="security-assignment-items">
-                {[...systemRoles, ...customRoles].map((role) => (
-                  <SecurityItem key={role.id} title={role.name} enabled={role.isEnabled} badge={role.isSystem ? "System" : "Custom"}>
-                    <p>{role.permissions.join(", ") || "No permissions"}</p>
-                    {!role.isSystem ? <Button variant="secondary" onClick={() => {
-                      setRoleForm({ id: role.id, name: role.name, permissions: role.permissions, isEnabled: role.isEnabled });
-                      setRoleFieldErrors({});
-                    }}>Edit</Button> : null}
-                    {!role.isSystem ? <Button variant="destructive" disabled={!role.isEnabled} onClick={() => void disableCustomSecurityRole(role.id).then((result) => {
-                      setCustomRoles((current) => current.map((item) => item.id === result.id ? { ...item, isEnabled: result.isEnabled } : item));
-                    }).catch((error) => setActionFailure(toRecoveryNotice(error, "Role could not be disabled.")))}>Disable</Button> : null}
-                  </SecurityItem>
-                ))}
-              </CardContent>
-            </Card>
-          </section>
+          <RolePermissionMatrix
+            roles={[...systemRoles, ...customRoles]}
+            form={roleForm}
+            errors={roleFieldErrors}
+            onFormChange={setRoleForm}
+            onErrorsChange={setRoleFieldErrors}
+            onSave={() => void saveRole()}
+            onDisable={(roleId) => void disableCustomSecurityRole(roleId).then((result) => {
+              setCustomRoles((current) => current.map((item) => item.id === result.id ? { ...item, isEnabled: result.isEnabled } : item));
+            }).catch((error) => setActionFailure(toRecoveryNotice(error, "Role could not be disabled.")))}
+          />
         ) : null}
 
         {section === "permissions" ? (
@@ -506,14 +485,65 @@ function RoleChoiceGroup({ roles, selected, error, onToggle }: { roles: Security
   );
 }
 
-function PermissionChoiceGroup({ selected, error, onToggle }: { selected: string[]; error?: string; onToggle: (permission: string) => void }) {
+function RolePermissionMatrix({ roles, form, errors, onFormChange, onErrorsChange, onSave, onDisable }: {
+  roles: SecurityRole[];
+  form: { id: string; name: string; permissions: string[]; isEnabled: boolean };
+  errors: CustomRoleFieldErrors;
+  onFormChange: (form: { id: string; name: string; permissions: string[]; isEnabled: boolean }) => void;
+  onErrorsChange: (errors: CustomRoleFieldErrors) => void;
+  onSave: () => void;
+  onDisable: (roleId: string) => void;
+}) {
+  const selectedRole = roles.find((role) => role.id === form.id);
+  const isReadOnly = selectedRole?.isSystem ?? false;
+  const setPermission = (permission: string, allowed: boolean) => {
+    if (isReadOnly) return;
+    const permissions = allowed
+      ? Array.from(new Set([...form.permissions, permission]))
+      : form.permissions.filter((value) => value !== permission);
+    onFormChange({ ...form, permissions });
+    onErrorsChange({ ...errors, permissions: undefined });
+  };
+
   return (
-    <fieldset className="security-choice-group security-permission-grid" aria-invalid={error ? "true" : undefined}>
-      <legend>Permissions</legend>
-      {permissionOptions.map((permission) => <label className="security-choice" key={permission}><input type="checkbox" checked={selected.includes(permission)} onChange={() => onToggle(permission)} /><span>{permission}</span></label>)}
-      {error ? <span className="field-error">{error}</span> : null}
-    </fieldset>
+    <section className="role-permission-workspace">
+      <aside className="role-picker" aria-label="Roles">
+        <div className="role-picker-heading"><div><p className="eyebrow">Roles</p><h3>Access bundles</h3></div><Button variant="secondary" onClick={() => { onFormChange({ id: "", name: "", permissions: [], isEnabled: true }); onErrorsChange({}); }}>New</Button></div>
+        <div className="role-picker-list">
+          {roles.map((role) => <button key={role.id} type="button" className={form.id === role.id ? "role-picker-item role-picker-item-active" : "role-picker-item"} onClick={() => { onFormChange({ id: role.id, name: role.name, permissions: role.permissions, isEnabled: role.isEnabled }); onErrorsChange({}); }}><span>{role.name}</span><small>{role.isSystem ? "System" : "Custom"}</small></button>)}
+        </div>
+      </aside>
+      <div className="permission-matrix">
+        <div className="role-editor-heading">
+          <div className="role-editor-fields">
+            <IdentityField id="role-id" label="Role id" value={form.id} error={errors.id} onChange={(id) => { onFormChange({ ...form, id }); onErrorsChange({ ...errors, id: undefined }); }} />
+            <IdentityField id="role-name" label="Role name" value={form.name} error={errors.name} onChange={(name) => { onFormChange({ ...form, name }); onErrorsChange({ ...errors, name: undefined }); }} />
+          </div>
+          <div className="role-editor-actions">
+            {isReadOnly ? <Badge variant="secondary">System role · read only</Badge> : <Button onClick={onSave}>Save role</Button>}
+            {selectedRole && !selectedRole.isSystem ? <Button variant="destructive" disabled={!selectedRole.isEnabled} onClick={() => onDisable(selectedRole.id)}>Disable</Button> : null}
+          </div>
+        </div>
+        {errors.permissions ? <span className="field-error">{errors.permissions}</span> : null}
+        <div className="permission-group-list">
+          {permissionGroups.map((group) => {
+            const allAllowed = group.permissions.every((permission) => form.permissions.includes(permission));
+            return <section className="permission-group-card" key={group.id}>
+              <div className="permission-row permission-group-row"><strong>{group.name}</strong><PermissionDecision allowed={allAllowed} disabled={isReadOnly} onAllow={() => group.permissions.forEach((permission) => setPermission(permission, true))} onDeny={() => group.permissions.forEach((permission) => setPermission(permission, false))} /></div>
+              {group.permissions.map((permission) => <div className="permission-row" key={permission}><code>{permission}</code><PermissionDecision allowed={form.permissions.includes(permission)} disabled={isReadOnly} onAllow={() => setPermission(permission, true)} onDeny={() => setPermission(permission, false)} /></div>)}
+            </section>;
+          })}
+        </div>
+      </div>
+    </section>
   );
+}
+
+function PermissionDecision({ allowed, disabled, onAllow, onDeny }: { allowed: boolean; disabled: boolean; onAllow: () => void; onDeny: () => void }) {
+  return <div className="permission-decision" aria-label={allowed ? "Allowed" : "Not allowed"}>
+    <button type="button" className={allowed ? "permission-toggle permission-allow permission-toggle-active" : "permission-toggle permission-allow"} disabled={disabled} aria-label="Allow" aria-pressed={allowed} onClick={onAllow}>✓</button>
+    <button type="button" className={!allowed ? "permission-toggle permission-deny permission-toggle-active" : "permission-toggle permission-deny"} disabled={disabled} aria-label="Do not allow" aria-pressed={!allowed} onClick={onDeny}>×</button>
+  </div>;
 }
 
 function RecoveryBanner({ notice, onRetry, onDismiss }: { notice: RecoveryNotice; onRetry?: () => void; onDismiss?: () => void }) {

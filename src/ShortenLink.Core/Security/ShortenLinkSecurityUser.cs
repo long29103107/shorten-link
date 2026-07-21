@@ -55,4 +55,5 @@ public sealed class ShortenLinkSecurityUser
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(static value => value, StringComparer.OrdinalIgnoreCase)
             .ToList();
+
 }

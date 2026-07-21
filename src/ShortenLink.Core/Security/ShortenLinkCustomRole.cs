@@ -46,4 +46,5 @@ public sealed class ShortenLinkCustomRole
             .Distinct(StringComparer.Ordinal)
             .OrderBy(static value => value, StringComparer.Ordinal)
             .ToList();
+
 }
