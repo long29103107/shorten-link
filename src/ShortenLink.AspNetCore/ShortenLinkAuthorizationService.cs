@@ -34,6 +34,7 @@ public sealed class ShortenLinkAuthorizationService(
     IShortenLinkSecurityAssignmentRepository securityAssignmentRepository,
     IShortenLinkUserApiKeyRepository userApiKeyRepository,
     IShortenLinkSecurityUserRepository userRepository,
+    IShortenLinkSecurityRoleRepository roleRepository,
     IShortenLinkUserSessionService userSessionService) : IShortenLinkAuthorizationService
 {
     public async Task<ShortenLinkAuthorizationResult> AuthorizeAsync(
@@ -114,9 +115,10 @@ public sealed class ShortenLinkAuthorizationService(
                 return ShortenLinkAuthorizationResult.Unauthorized();
             }
 
-            var persistedPermissions = GetEffectivePermissions(
+            var persistedPermissions = await GetEffectivePermissionsAsync(
                 persistedAssignment.Roles,
-                persistedAssignment.Permissions);
+                persistedAssignment.Permissions,
+                cancellationToken).ConfigureAwait(false);
 
             return persistedPermissions.Contains(permission)
                 ? ShortenLinkAuthorizationResult.Success()
@@ -131,18 +133,19 @@ public sealed class ShortenLinkAuthorizationService(
             return ShortenLinkAuthorizationResult.Unauthorized();
         }
 
-        var permissions = GetEffectivePermissions(principal);
+        var permissions = await GetEffectivePermissionsAsync(
+            principal.Roles,
+            principal.Permissions,
+            cancellationToken).ConfigureAwait(false);
         return permissions.Contains(permission)
             ? ShortenLinkAuthorizationResult.Success()
             : ShortenLinkAuthorizationResult.Forbidden();
     }
 
-    private static HashSet<string> GetEffectivePermissions(ShortenLinkApiKeyOptions apiKey)
-        => GetEffectivePermissions(apiKey.Roles, apiKey.Permissions);
-
-    private static HashSet<string> GetEffectivePermissions(
+    private async Task<HashSet<string>> GetEffectivePermissionsAsync(
         IEnumerable<string> roles,
-        IEnumerable<string> explicitPermissions)
+        IEnumerable<string> explicitPermissions,
+        CancellationToken cancellationToken)
     {
         var permissions = new HashSet<string>(StringComparer.Ordinal);
         foreach (var permission in explicitPermissions.Where(static permission => !string.IsNullOrWhiteSpace(permission)))
@@ -152,15 +155,30 @@ public sealed class ShortenLinkAuthorizationService(
 
         foreach (var role in roles.Where(static role => !string.IsNullOrWhiteSpace(role)))
         {
-            if (!ShortenLinkRoles.PermissionBundles.TryGetValue(role, out var rolePermissions))
+            var rolePermissions = new HashSet<string>(StringComparer.Ordinal);
+            if (ShortenLinkRoles.PermissionBundles.TryGetValue(role, out var systemPermissions))
             {
-                continue;
+                rolePermissions.UnionWith(systemPermissions);
+            }
+            else
+            {
+                var customRole = await roleRepository
+                    .FindCustomRoleAsync(role, cancellationToken)
+                    .ConfigureAwait(false);
+                if (customRole is not { IsEnabled: true }) continue;
+                rolePermissions.UnionWith(customRole.Permissions);
             }
 
-            foreach (var permission in rolePermissions)
+            var overrides = await roleRepository
+                .ListPermissionOverridesAsync(role, cancellationToken)
+                .ConfigureAwait(false);
+            foreach (var item in overrides)
             {
-                permissions.Add(permission);
+                if (item.IsAllowed) rolePermissions.Add(item.Permission);
+                else rolePermissions.Remove(item.Permission);
             }
+
+            permissions.UnionWith(rolePermissions);
         }
 
         return permissions;

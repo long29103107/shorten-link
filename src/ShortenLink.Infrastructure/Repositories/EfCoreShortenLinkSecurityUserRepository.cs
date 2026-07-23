@@ -107,7 +107,7 @@ public sealed class EfCoreShortenLinkSecurityUserRepository : IShortenLinkSecuri
                 BootstrapAdminUsername,
                 "Bootstrap Admin",
                 passwordHash,
-                new[] { ShortenLinkSystemRoles.Owner },
+                new[] { ShortenLinkSystemRoles.Admin },
                 isEnabled: true,
                 isHidden: true,
                 isBootstrap: true,
@@ -118,13 +118,11 @@ public sealed class EfCoreShortenLinkSecurityUserRepository : IShortenLinkSecuri
             return user;
         }
 
-        existing.PasswordHash = string.IsNullOrWhiteSpace(existing.PasswordHash)
-            ? passwordHash
-            : existing.PasswordHash;
+        existing.PasswordHash = passwordHash;
         existing.DisplayName = string.IsNullOrWhiteSpace(existing.DisplayName)
             ? "Bootstrap Admin"
             : existing.DisplayName;
-        existing.RoleIdsJson = "[\"Owner\"]";
+        existing.RoleIdsJson = "[\"Admin\"]";
         existing.IsEnabled = true;
         existing.IsHidden = true;
         existing.IsBootstrap = true;

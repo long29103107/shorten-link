@@ -89,8 +89,11 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
         securityRoles.MapPut("/custom", UpsertCustomSecurityRoleAsync)
             .WithName("UpsertCustomSecurityRole");
 
-        securityRoles.MapPost("/custom/{id}/disable", DisableCustomSecurityRoleAsync)
-            .WithName("DisableCustomSecurityRole");
+        securityRoles.MapPut("/{id}/permission-overrides", ReplaceSecurityRolePermissionOverridesAsync)
+            .WithName("ReplaceSecurityRolePermissionOverrides");
+
+        securityRoles.MapDelete("/custom/{id}", DeleteCustomSecurityRoleAsync)
+            .WithName("DeleteCustomSecurityRole");
 
         var securityUsers = security.MapGroup("/users")
             .WithTags("Security Users");
@@ -354,15 +357,23 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
             return CreateAuthorizationErrorResponse(authorization);
         }
 
-        var systemRoles = ShortenLinkSystemRoles.PermissionBundles
-            .OrderBy(role => role.Key, StringComparer.OrdinalIgnoreCase)
-            .Select(role => SecurityRoleResponse.System(role.Key, role.Value))
-            .ToList();
+        var systemRoles = new List<SecurityRoleResponse>();
+        foreach (var role in ShortenLinkSystemRoles.PermissionBundles.OrderBy(role => role.Key, StringComparer.OrdinalIgnoreCase))
+        {
+            var overrides = await roleRepository.ListPermissionOverridesAsync(role.Key, cancellationToken).ConfigureAwait(false);
+            systemRoles.Add(SecurityRoleResponse.System(role.Key, role.Value, overrides));
+        }
         var customRoles = await roleRepository.ListCustomRolesAsync(cancellationToken).ConfigureAwait(false);
+        var customRoleResponses = new List<SecurityRoleResponse>();
+        foreach (var role in customRoles)
+        {
+            var overrides = await roleRepository.ListPermissionOverridesAsync(role.RoleKey, cancellationToken).ConfigureAwait(false);
+            customRoleResponses.Add(SecurityRoleResponse.Custom(role, overrides));
+        }
 
         return TypedResults.Ok(new SecurityRolesListResponse(
             systemRoles,
-            customRoles.Select(SecurityRoleResponse.Custom).ToList()));
+            customRoleResponses));
     }
 
     private static async Task<Results<Ok<SecurityRoleResponse>, JsonHttpResult<ShortLinkErrorResponse>>> UpsertCustomSecurityRoleAsync(
@@ -397,12 +408,60 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
             timeProvider.GetUtcNow());
 
         await roleRepository.AddOrUpdateCustomRoleAsync(role, cancellationToken).ConfigureAwait(false);
-        return TypedResults.Ok(SecurityRoleResponse.Custom(role));
+        var overrides = await roleRepository.ListPermissionOverridesAsync(role.RoleKey, cancellationToken).ConfigureAwait(false);
+        return TypedResults.Ok(SecurityRoleResponse.Custom(role, overrides));
     }
 
-    private static async Task<Results<Ok<SecurityRoleDisabledResponse>, JsonHttpResult<ShortLinkErrorResponse>>> DisableCustomSecurityRoleAsync(
+    private static async Task<Results<Ok<SecurityRoleResponse>, JsonHttpResult<ShortLinkErrorResponse>>> ReplaceSecurityRolePermissionOverridesAsync(
+        string id,
+        SecurityRolePermissionOverridesRequest request,
+        IShortenLinkSecurityRoleRepository roleRepository,
+        IShortenLinkAuthorizationService authorizationService,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var authorization = await authorizationService
+            .AuthorizeAsync(httpContext, ShortenLinkPermissions.SecurityAssignmentsManage, cancellationToken)
+            .ConfigureAwait(false);
+        if (!authorization.Succeeded)
+        {
+            return CreateAuthorizationErrorResponse(authorization);
+        }
+
+        var roleId = id.Trim();
+        var isSystem = ShortenLinkSystemRoles.PermissionBundles.TryGetValue(roleId, out var systemDefaults);
+        var customRole = isSystem ? null : await roleRepository.FindCustomRoleAsync(roleId, cancellationToken).ConfigureAwait(false);
+        if (!isSystem && customRole is null)
+        {
+            return CreateErrorResponse(ShortLinkErrorCodes.NotFound, "Security role was not found.");
+        }
+
+        var normalized = new List<ShortenLinkRolePermissionOverride>();
+        foreach (var item in request.Overrides ?? [])
+        {
+            if (!ShortenLinkPermissions.All.Contains(item.Permission))
+            {
+                return CreateFieldErrorResponse("invalid_permission", $"Unknown permission '{item.Permission}'.", "overrides");
+            }
+
+            if (normalized.Any(existing => existing.Permission == item.Permission))
+            {
+                return CreateFieldErrorResponse("duplicate_permission", $"Permission '{item.Permission}' has more than one override.", "overrides");
+            }
+
+            normalized.Add(ShortenLinkRolePermissionOverride.Create(item.Permission, item.IsAllowed));
+        }
+
+        await roleRepository.ReplacePermissionOverridesAsync(roleId, normalized, cancellationToken).ConfigureAwait(false);
+        return TypedResults.Ok(isSystem
+            ? SecurityRoleResponse.System(roleId, systemDefaults!, normalized)
+            : SecurityRoleResponse.Custom(customRole!, normalized));
+    }
+
+    private static async Task<Results<Ok<SecurityRoleDeletedResponse>, JsonHttpResult<ShortLinkErrorResponse>>> DeleteCustomSecurityRoleAsync(
         string id,
         IShortenLinkSecurityRoleRepository roleRepository,
+        IShortenLinkSecurityUserRepository userRepository,
         IShortenLinkAuthorizationService authorizationService,
         HttpContext httpContext,
         CancellationToken cancellationToken)
@@ -417,16 +476,32 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
 
         if (ShortenLinkSystemRoles.PermissionBundles.ContainsKey(id))
         {
-            return CreateErrorResponse("system_role_immutable", "System roles cannot be disabled.");
+            return CreateErrorResponse("system_role_immutable", "System roles cannot be deleted.");
         }
 
-        var disabled = await roleRepository.DisableCustomRoleAsync(id, cancellationToken).ConfigureAwait(false);
-        if (!disabled)
+        var role = await roleRepository.FindCustomRoleAsync(id, cancellationToken).ConfigureAwait(false);
+        if (role is null)
         {
             return CreateErrorResponse(ShortLinkErrorCodes.NotFound, "Custom role was not found.");
         }
 
-        return TypedResults.Ok(new SecurityRoleDisabledResponse(id, false));
+        var users = await userRepository.ListAsync(includeHidden: true, cancellationToken).ConfigureAwait(false);
+        var assignedUserCount = users.Count(user =>
+            user.RoleIds.Contains(id, StringComparer.OrdinalIgnoreCase));
+        if (assignedUserCount > 0)
+        {
+            return CreateErrorResponse(
+                "role_in_use",
+                $"Role is assigned to {assignedUserCount} user(s). Remove or replace the role on those users before deleting it.");
+        }
+
+        var deleted = await roleRepository.DeleteCustomRoleAsync(id, cancellationToken).ConfigureAwait(false);
+        if (!deleted)
+        {
+            return CreateErrorResponse(ShortLinkErrorCodes.NotFound, "Custom role was not found.");
+        }
+
+        return TypedResults.Ok(new SecurityRoleDeletedResponse(id));
     }
 
     private static async Task<Results<Ok<SecurityUsersListResponse>, JsonHttpResult<ShortLinkErrorResponse>>> ListSecurityUsersAsync(
@@ -483,7 +558,7 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
             .ConfigureAwait(false);
         var passwordHash = !string.IsNullOrWhiteSpace(request.Password)
             ? ShortenLinkSecurityCredentialHasher.HashPassword(request.Password)
-            : existing!.PasswordHash;
+            : existing?.PasswordHash ?? ShortenLinkSecurityCredentialHasher.PasswordNotSetHash;
 
         var user = new ShortenLinkSecurityUser(
             request.Id.Trim(),
@@ -1105,6 +1180,7 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
             "invalid_security_role" => StatusCodes.Status400BadRequest,
             "invalid_security_assignment" => StatusCodes.Status400BadRequest,
             "invalid_security_user" => StatusCodes.Status400BadRequest,
+            "role_in_use" => StatusCodes.Status409Conflict,
             "system_role_immutable" => StatusCodes.Status400BadRequest,
             "bootstrap_user_immutable" => StatusCodes.Status400BadRequest,
             "unauthorized" => StatusCodes.Status401Unauthorized,
@@ -1263,11 +1339,6 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
         if (existing is { IsBootstrap: true })
         {
             return CreateErrorResponse("bootstrap_user_immutable", "The bootstrap admin user cannot be updated through user management APIs.");
-        }
-
-        if (existing is null && string.IsNullOrWhiteSpace(request.Password))
-        {
-            return CreateFieldErrorResponse("invalid_security_user", "Password is required when creating a user.", "password");
         }
 
         var usernameOwner = await userRepository
@@ -1482,31 +1553,70 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
         string Id,
         string Name,
         IReadOnlyList<string> Permissions,
+        IReadOnlyList<string> DefaultPermissions,
+        IReadOnlyList<SecurityRolePermissionOverrideResponse> PermissionOverrides,
         bool IsSystem,
         bool IsEnabled,
         bool CanDelete,
         DateTimeOffset? CreatedAtUtc)
     {
-        public static SecurityRoleResponse System(string id, IEnumerable<string> permissions) =>
-            new(
+        public static SecurityRoleResponse System(
+            string id,
+            IEnumerable<string> permissions,
+            IReadOnlyList<ShortenLinkRolePermissionOverride> overrides)
+        {
+            var defaults = permissions.OrderBy(static permission => permission, StringComparer.Ordinal).ToList();
+            return new(
                 id,
                 id,
-                permissions.OrderBy(static permission => permission, StringComparer.Ordinal).ToList(),
+                ApplyOverrides(defaults, overrides),
+                defaults,
+                overrides.Select(SecurityRolePermissionOverrideResponse.FromDomain).ToList(),
                 IsSystem: true,
                 IsEnabled: true,
                 CanDelete: false,
                 CreatedAtUtc: null);
+        }
 
-        public static SecurityRoleResponse Custom(ShortenLinkCustomRole role) =>
+        public static SecurityRoleResponse Custom(
+            ShortenLinkCustomRole role,
+            IReadOnlyList<ShortenLinkRolePermissionOverride> overrides) =>
             new(
                 role.RoleKey,
                 role.Name,
+                ApplyOverrides(role.Permissions, overrides),
                 role.Permissions,
+                overrides.Select(SecurityRolePermissionOverrideResponse.FromDomain).ToList(),
                 IsSystem: false,
                 role.IsEnabled,
                 CanDelete: true,
                 role.CreatedAt);
+
+        private static IReadOnlyList<string> ApplyOverrides(
+            IEnumerable<string> defaults,
+            IEnumerable<ShortenLinkRolePermissionOverride> overrides)
+        {
+            var effective = new HashSet<string>(defaults, StringComparer.Ordinal);
+            foreach (var item in overrides)
+            {
+                if (item.IsAllowed) effective.Add(item.Permission);
+                else effective.Remove(item.Permission);
+            }
+
+            return effective.OrderBy(static permission => permission, StringComparer.Ordinal).ToList();
+        }
     }
+
+    public sealed record SecurityRolePermissionOverrideResponse(string Permission, bool IsAllowed)
+    {
+        public static SecurityRolePermissionOverrideResponse FromDomain(ShortenLinkRolePermissionOverride item) =>
+            new(item.Permission, item.IsAllowed);
+    }
+
+    public sealed record SecurityRolePermissionOverrideRequest(string Permission, bool IsAllowed);
+
+    public sealed record SecurityRolePermissionOverridesRequest(
+        IReadOnlyList<SecurityRolePermissionOverrideRequest>? Overrides);
 
     public sealed record SecurityCustomRoleUpsertRequest(
         string Id,
@@ -1514,9 +1624,7 @@ public static class ShortenLinkEndpointRouteBuilderExtensions
         IReadOnlyList<string>? Permissions,
         bool? IsEnabled);
 
-    public sealed record SecurityRoleDisabledResponse(
-        string Id,
-        bool IsEnabled);
+    public sealed record SecurityRoleDeletedResponse(string Id);
 
     public sealed record SecurityUsersListResponse(
         IReadOnlyList<SecurityUserResponse> Items);

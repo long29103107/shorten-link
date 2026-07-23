@@ -15,7 +15,16 @@ public interface IShortenLinkSecurityRoleRepository
         ShortenLinkCustomRole role,
         CancellationToken cancellationToken = default);
 
-    Task<bool> DisableCustomRoleAsync(
+    Task<IReadOnlyList<ShortenLinkRolePermissionOverride>> ListPermissionOverridesAsync(
+        string roleId,
+        CancellationToken cancellationToken = default);
+
+    Task ReplacePermissionOverridesAsync(
+        string roleId,
+        IReadOnlyList<ShortenLinkRolePermissionOverride> overrides,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> DeleteCustomRoleAsync(
         string id,
         CancellationToken cancellationToken = default);
 }

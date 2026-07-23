@@ -18,11 +18,10 @@ describe("identity form validation", () => {
     });
   });
 
-  test("requires email, display name, and password while registering a managed user", () => {
+  test("requires email and display name while registering a managed user", () => {
     expect(validateManagedUserForm({ email: "invalid", displayName: "", password: "" })).toEqual({
       email: "Enter a valid email address.",
-      displayName: "Enter a display name.",
-      password: "Enter a password for the new user."
+      displayName: "Enter a display name."
     });
     expect(validateManagedUserForm({ email: "editor@example.com", displayName: "Editor", password: "secret" })).toEqual({});
   });

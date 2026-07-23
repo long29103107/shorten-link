@@ -1,4 +1,4 @@
-import type { SecurityUser } from "./types";
+import type { SecurityRole, SecurityUser } from "./types";
 
 export type SecurityUserStatusFilter = "all" | "enabled" | "disabled";
 export type SecurityUserSortField = "email" | "displayName" | "createdAt";
@@ -7,6 +7,7 @@ export type SortDirection = "asc" | "desc";
 export type SecurityUserDiscovery = {
   search: string;
   status: SecurityUserStatusFilter;
+  role: string;
   sortBy: SecurityUserSortField;
   direction: SortDirection;
 };
@@ -14,9 +15,44 @@ export type SecurityUserDiscovery = {
 export const defaultSecurityUserDiscovery: SecurityUserDiscovery = {
   search: "",
   status: "all",
+  role: "all",
   sortBy: "createdAt",
   direction: "desc"
 };
+
+export type PermissionDiscoveryGroup = {
+  id: string;
+  name: string;
+  permissions: string[];
+};
+
+export function discoverSecurityRoles(roles: readonly SecurityRole[], search: string): SecurityRole[] {
+  const normalizedSearch = search.trim().toLocaleLowerCase();
+  return roles.filter((role) =>
+    !normalizedSearch
+    || role.name.toLocaleLowerCase().includes(normalizedSearch)
+    || role.id.toLocaleLowerCase().includes(normalizedSearch)
+  );
+}
+
+export function discoverPermissionGroups(
+  groups: readonly PermissionDiscoveryGroup[],
+  search: string,
+  getDescription: (permission: string) => string
+): PermissionDiscoveryGroup[] {
+  const normalizedSearch = search.trim().toLocaleLowerCase();
+  return groups
+    .map((group) => ({
+      ...group,
+      permissions: group.permissions.filter((permission) =>
+        !normalizedSearch
+        || group.name.toLocaleLowerCase().includes(normalizedSearch)
+        || permission.toLocaleLowerCase().includes(normalizedSearch)
+        || getDescription(permission).toLocaleLowerCase().includes(normalizedSearch)
+      )
+    }))
+    .filter((group) => group.permissions.length > 0);
+}
 
 export function discoverSecurityUsers(users: SecurityUser[], query: SecurityUserDiscovery): SecurityUser[] {
   const search = query.search.trim().toLocaleLowerCase();
@@ -26,7 +62,11 @@ export function discoverSecurityUsers(users: SecurityUser[], query: SecurityUser
       || user.displayName.toLocaleLowerCase().includes(search);
     const matchesStatus = query.status === "all"
       || (query.status === "enabled" ? user.isEnabled : !user.isEnabled);
-    return matchesSearch && matchesStatus;
+    const matchesRole = query.role === "all"
+      || (query.role === "none"
+        ? user.roleIds.length === 0
+        : user.roleIds.some((roleId) => roleId.toLocaleLowerCase() === query.role.toLocaleLowerCase()));
+    return matchesSearch && matchesStatus && matchesRole;
   });
 
   return filtered.sort((left, right) => {

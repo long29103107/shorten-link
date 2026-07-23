@@ -10,6 +10,7 @@ import type { SecurityAssignment } from "../types";
 import { formatDateTime, toFriendlyErrorMessage } from "../types";
 import { Badge } from "../../../shared/components/ui/badge";
 import { Button } from "../../../shared/components/ui/button";
+import { RefreshButton } from "../../../shared/components/RefreshButton";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../shared/components/ui/card";
 import { ConfirmDialog } from "../../../shared/components/ConfirmDialog";
 import { EmptyState } from "../../../shared/components/EmptyState";
@@ -256,9 +257,7 @@ export function SecurityAssignmentsPage() {
             <CardTitle>Manage user, role, and permission assignments.</CardTitle>
           </div>
         </div>
-        <Button variant="secondary" disabled={isLoading} onClick={() => void loadAssignments()}>
-          Refresh
-        </Button>
+        <RefreshButton isRefreshing={isLoading} label="Refresh security assignments" onRefresh={loadAssignments} />
       </CardHeader>
 
       <CardContent>

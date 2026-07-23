@@ -366,7 +366,7 @@ public sealed class ShortLinkEndpointsTests
         Assert.NotNull(loginPayload);
         Assert.False(string.IsNullOrWhiteSpace(loginPayload.Token));
         Assert.Equal("admin", loginPayload.User.Username);
-        Assert.Contains(ShortenLinkRoles.Owner, loginPayload.User.Roles);
+        Assert.Contains(ShortenLinkRoles.Admin, loginPayload.User.Roles);
         Assert.Contains(ShortenLinkPermissions.SecurityAssignmentsManage, loginPayload.User.Permissions);
         Assert.DoesNotContain("PasswordHash", loginJson, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("admin:", loginJson, StringComparison.OrdinalIgnoreCase);
@@ -593,12 +593,12 @@ public sealed class ShortLinkEndpointsTests
             new[] { ShortenLinkPermissions.AnalyticsRead, ShortenLinkPermissions.ShortLinksRead },
             upserted.Permissions);
 
-        using var disableResponse = await client.PostAsync("/api/security/roles/custom/support/disable", null);
-        var disabled = await disableResponse.Content.ReadFromJsonAsync<SecurityRoleDisabledResponse>();
+        using var deleteResponse = await client.DeleteAsync("/api/security/roles/custom/support");
+        var deleted = await deleteResponse.Content.ReadFromJsonAsync<SecurityRoleDeletedResponse>();
 
-        Assert.Equal(HttpStatusCode.OK, disableResponse.StatusCode);
-        Assert.NotNull(disabled);
-        Assert.False(disabled.IsEnabled);
+        Assert.Equal(HttpStatusCode.OK, deleteResponse.StatusCode);
+        Assert.NotNull(deleted);
+        Assert.Equal("support", deleted.Id);
     }
 
     [Fact]
@@ -634,6 +634,116 @@ public sealed class ShortLinkEndpointsTests
         Assert.Equal(HttpStatusCode.BadRequest, systemRoleResponse.StatusCode);
         Assert.NotNull(systemRolePayload);
         Assert.Equal("system_role_immutable", systemRolePayload.ErrorCode);
+    }
+
+    [Fact]
+    public async Task SecurityRoles_PersistOverridesAndApplyThemToUserSessions()
+    {
+        await using var factory = new ShortLinkApiFactory(
+            enableFrontendFallback: false,
+            securityEnabled: true);
+        using var client = factory.CreateClient();
+        var token = await LoginAsAdminAsync(client);
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        using var overrideResponse = await client.PutAsJsonAsync(
+            $"/api/security/roles/{ShortenLinkRoles.Viewer}/permission-overrides",
+            new
+            {
+                overrides = new[]
+                {
+                    new { permission = ShortenLinkPermissions.ShortLinksRead, isAllowed = false },
+                    new { permission = ShortenLinkPermissions.ShortLinksDelete, isAllowed = true }
+                }
+            });
+        var overriddenRole = await overrideResponse.Content.ReadFromJsonAsync<SecurityRoleResponse>();
+
+        Assert.Equal(HttpStatusCode.OK, overrideResponse.StatusCode);
+        Assert.NotNull(overriddenRole);
+        Assert.Contains(ShortenLinkPermissions.ShortLinksRead, overriddenRole.DefaultPermissions);
+        Assert.DoesNotContain(ShortenLinkPermissions.ShortLinksDelete, overriddenRole.DefaultPermissions);
+        Assert.DoesNotContain(ShortenLinkPermissions.ShortLinksRead, overriddenRole.Permissions);
+        Assert.Contains(ShortenLinkPermissions.ShortLinksDelete, overriddenRole.Permissions);
+        Assert.Contains(overriddenRole.PermissionOverrides, item =>
+            item.Permission == ShortenLinkPermissions.ShortLinksRead && !item.IsAllowed);
+        Assert.Contains(overriddenRole.PermissionOverrides, item =>
+            item.Permission == ShortenLinkPermissions.ShortLinksDelete && item.IsAllowed);
+
+        using var userResponse = await client.PutAsJsonAsync("/api/security/users", new
+        {
+            id = "override-viewer",
+            username = "override-viewer",
+            displayName = "Override Viewer",
+            password = "override-password",
+            roleIds = new[] { ShortenLinkRoles.Viewer },
+            isEnabled = true
+        });
+        Assert.Equal(HttpStatusCode.OK, userResponse.StatusCode);
+
+        client.DefaultRequestHeaders.Authorization = null;
+        using var loginResponse = await client.PostAsJsonAsync("/api/security/login", new
+        {
+            username = "override-viewer",
+            password = "override-password"
+        });
+        var login = await loginResponse.Content.ReadFromJsonAsync<SecurityLoginResponse>();
+
+        Assert.Equal(HttpStatusCode.OK, loginResponse.StatusCode);
+        Assert.NotNull(login);
+        Assert.DoesNotContain(ShortenLinkPermissions.ShortLinksRead, login.User.Permissions);
+        Assert.Contains(ShortenLinkPermissions.ShortLinksDelete, login.User.Permissions);
+    }
+
+    [Fact]
+    public async Task SecurityRoles_RequireUsersToBeUnassignedBeforeCustomRoleDeletion()
+    {
+        await using var factory = new ShortLinkApiFactory(
+            enableFrontendFallback: false,
+            securityEnabled: true);
+        using var client = factory.CreateClient();
+        var token = await LoginAsAdminAsync(client);
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        using var roleResponse = await client.PutAsJsonAsync("/api/security/roles/custom", new
+        {
+            id = "support",
+            name = "Support",
+            permissions = new[] { ShortenLinkPermissions.ShortLinksRead },
+            isEnabled = true
+        });
+        Assert.Equal(HttpStatusCode.OK, roleResponse.StatusCode);
+
+        using var userResponse = await client.PutAsJsonAsync("/api/security/users", new
+        {
+            id = "support-user",
+            username = "support-user",
+            displayName = "Support User",
+            password = "support-password",
+            roleIds = new[] { "support" },
+            isEnabled = true
+        });
+        Assert.Equal(HttpStatusCode.OK, userResponse.StatusCode);
+
+        using var inUseResponse = await client.DeleteAsync("/api/security/roles/custom/support");
+        var inUse = await inUseResponse.Content.ReadFromJsonAsync<ShortLinkErrorResponse>();
+
+        Assert.Equal(HttpStatusCode.Conflict, inUseResponse.StatusCode);
+        Assert.NotNull(inUse);
+        Assert.Equal("role_in_use", inUse.ErrorCode);
+
+        using var unassignResponse = await client.PutAsJsonAsync("/api/security/users", new
+        {
+            id = "support-user",
+            username = "support-user",
+            displayName = "Support User",
+            password = (string?)null,
+            roleIds = Array.Empty<string>(),
+            isEnabled = true
+        });
+        Assert.Equal(HttpStatusCode.OK, unassignResponse.StatusCode);
+
+        using var deleteResponse = await client.DeleteAsync("/api/security/roles/custom/support");
+        Assert.Equal(HttpStatusCode.OK, deleteResponse.StatusCode);
     }
 
     [Fact]
@@ -2213,14 +2323,18 @@ public sealed class ShortLinkEndpointsTests
         string Id,
         string Name,
         IReadOnlyList<string> Permissions,
+        IReadOnlyList<string> DefaultPermissions,
+        IReadOnlyList<SecurityRolePermissionOverrideResponse> PermissionOverrides,
         bool IsSystem,
         bool IsEnabled,
         bool CanDelete,
         DateTimeOffset? CreatedAtUtc);
 
-    private sealed record SecurityRoleDisabledResponse(
-        string Id,
-        bool IsEnabled);
+    private sealed record SecurityRolePermissionOverrideResponse(
+        string Permission,
+        bool IsAllowed);
+
+    private sealed record SecurityRoleDeletedResponse(string Id);
 
     private sealed record SecurityUsersListResponse(
         IReadOnlyList<SecurityUserResponse> Items);

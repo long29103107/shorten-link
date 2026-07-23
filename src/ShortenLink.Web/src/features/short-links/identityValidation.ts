@@ -41,9 +41,6 @@ export function validateManagedUserForm(
   if (!form.displayName.trim()) {
     errors.displayName = "Enter a display name.";
   }
-  if (!form.password.trim()) {
-    errors.password = "Enter a password for the new user.";
-  }
   return errors;
 }
 

@@ -65,7 +65,44 @@ public sealed class EfCoreShortenLinkSecurityRoleRepository : IShortenLinkSecuri
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<bool> DisableCustomRoleAsync(
+    public async Task<IReadOnlyList<ShortenLinkRolePermissionOverride>> ListPermissionOverridesAsync(
+        string roleId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(roleId);
+
+        return await dbContext.SecurityRolePermissionOverrides
+            .AsNoTracking()
+            .Where(item => item.RoleId == roleId)
+            .OrderBy(item => item.Permission)
+            .Select(item => new ShortenLinkRolePermissionOverride(item.Permission, item.IsAllowed))
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task ReplacePermissionOverridesAsync(
+        string roleId,
+        IReadOnlyList<ShortenLinkRolePermissionOverride> overrides,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(roleId);
+        ArgumentNullException.ThrowIfNull(overrides);
+
+        var current = await dbContext.SecurityRolePermissionOverrides
+            .Where(item => item.RoleId == roleId)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        dbContext.SecurityRolePermissionOverrides.RemoveRange(current);
+        dbContext.SecurityRolePermissionOverrides.AddRange(overrides.Select(item => new ShortenLinkRolePermissionOverrideRecord
+        {
+            RoleId = roleId,
+            Permission = item.Permission,
+            IsAllowed = item.IsAllowed
+        }));
+        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<bool> DeleteCustomRoleAsync(
         string id,
         CancellationToken cancellationToken = default)
     {
@@ -79,7 +116,12 @@ public sealed class EfCoreShortenLinkSecurityRoleRepository : IShortenLinkSecuri
             return false;
         }
 
-        record.IsEnabled = false;
+        dbContext.SecurityCustomRoles.Remove(record);
+        var overrides = await dbContext.SecurityRolePermissionOverrides
+            .Where(item => item.RoleId == id)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        dbContext.SecurityRolePermissionOverrides.RemoveRange(overrides);
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         return true;
     }

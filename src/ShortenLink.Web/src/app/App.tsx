@@ -10,23 +10,29 @@ import {
 } from "../features/short-links/api/adminSecurity";
 import { getCurrentSecurityUser } from "../features/short-links/api/shortLinksApi";
 import { LoginPage } from "../features/short-links/pages/LoginPage";
+import { AdminDashboardPage } from "../features/short-links/pages/AdminDashboardPage";
 import { SecurityManagementPage } from "../features/short-links/pages/SecurityManagementPage";
 import { ShortLinkAdminPage } from "../features/short-links/pages/ShortLinkAdminPage";
 import { StatusPage } from "../features/short-links/pages/StatusPage";
 import { ShortLinkDetailPage } from "../features/short-links/pages/ShortLinkDetailPage";
 import type { AppRoute, CreatedShortLink } from "../features/short-links/types";
 import { Button } from "../shared/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from "../shared/components/ui/dropdown-menu";
 import { ConfirmDialog } from "../shared/components/ConfirmDialog";
 import { Toaster } from "../shared/components/Toaster";
 import { parseRoute } from "./router";
 
-type NavigationIconName = "endpoint" | "admin" | "users" | "roles" | "permissions" | "sign-in";
+type NavigationIconName = "endpoint" | "admin" | "users" | "roles" | "sign-in";
 
 const securitySectionIcons = {
   users: "users",
-  roles: "roles",
-  permissions: "permissions"
-} as const satisfies Record<"users" | "roles" | "permissions", NavigationIconName>;
+  roles: "roles"
+} as const satisfies Record<"users" | "roles", NavigationIconName>;
 
 export function App() {
   const [route, setRoute] = useState<AppRoute>(() =>
@@ -35,8 +41,10 @@ export function App() {
   const [recentLink, setRecentLink] = useState<CreatedShortLink | null>(null);
   const [hasAdminEditChanges, setHasAdminEditChanges] = useState(false);
   const [pendingNavigationPath, setPendingNavigationPath] = useState<string | null>(null);
+  const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState(() => getStoredCurrentUser());
   const adminPermissions = getAdminPermissionState();
+  const hasAdminRole = currentUser?.roles.some((role) => role.toLowerCase() === "admin") ?? false;
 
   useEffect(() => {
     const handleAuthChanged = () => {
@@ -92,11 +100,11 @@ export function App() {
         setRoute({ kind: "login" });
         return;
       }
-      if (route.kind === "admin" && hasAdminEditChanges && nextPath !== "/admin") {
-        window.history.pushState({}, "", "/admin");
+      if (route.kind === "admin" && hasAdminEditChanges && nextPath !== "/short-links") {
+        window.history.pushState({}, "", "/short-links");
         setPendingNavigationPath(nextPath);
         startTransition(() => {
-          setRoute(parseRoute("/admin"));
+          setRoute(parseRoute("/short-links"));
         });
         return;
       }
@@ -124,7 +132,7 @@ export function App() {
   };
 
   const navigate = (path: string) => {
-    if (route.kind === "admin" && hasAdminEditChanges && path !== "/admin") {
+    if (route.kind === "admin" && hasAdminEditChanges && path !== "/short-links") {
       setPendingNavigationPath(path);
       return;
     }
@@ -145,6 +153,8 @@ export function App() {
   const pageTitle =
     route.kind === "admin"
       ? "Admin"
+      : route.kind === "dashboard"
+        ? "Dashboard"
       : route.kind === "security"
         ? "Identity & Access"
       : route.kind === "login"
@@ -158,6 +168,8 @@ export function App() {
   const pageDescription =
     route.kind === "admin"
       ? "Manage generated random short links"
+      : route.kind === "dashboard"
+        ? "Monitor short links and access controls"
       : route.kind === "security"
         ? `Manage ${route.section} access controls`
       : route.kind === "login"
@@ -178,8 +190,7 @@ export function App() {
           />
         ) : (
           <LoginPage
-            onSignedIn={() => navigate("/security/users")}
-            onBackHome={() => navigate("/")}
+            onSignedIn={() => navigate("/admin/security/users")}
           />
         )}
         <ConfirmDialog
@@ -197,7 +208,8 @@ export function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className={route.kind === "home" ? "app-shell app-shell-focus" : "app-shell"}>
+      {route.kind !== "home" ? (
       <aside className="sidebar">
         <div className="brand-block">
           <div className="brand-mark">SL</div>
@@ -211,58 +223,88 @@ export function App() {
           <code>100% generated links</code>
         </div>
 
-        <nav className="sidebar-nav" aria-label="Primary">
-          <Button
-            className="sidebar-nav-button"
-            aria-current={route.kind === "home" ? "page" : undefined}
-            variant="ghost"
-            onClick={() => navigate("/")}
-          >
-            <NavigationIcon name="endpoint" />
-            Endpoint
-          </Button>
-          <Button
-            className="sidebar-nav-button"
-            aria-current={route.kind === "admin" ? "page" : undefined}
-            variant="ghost"
-            onClick={() => navigate("/admin")}
-          >
-            <NavigationIcon name="admin" />
-            Admin URLs
-          </Button>
-          {currentUser || adminPermissions.canManageSecurityAssignments ? (
+        {route.kind === "dashboard" || route.kind === "security" ? (
+          <nav className="sidebar-nav" aria-label="Admin navigation">
+            <Button
+              className="sidebar-nav-button"
+              aria-current={route.kind === "dashboard" ? "page" : undefined}
+              variant="ghost"
+              onClick={() => navigate("/admin/dashboard")}
+            >
+              <NavigationIcon name="admin" />
+              Dashboard
+            </Button>
             <div className="sidebar-nav-group">
               <p className="sidebar-nav-group-label">Security</p>
-              {(["users", "roles", "permissions"] as const).map((section) => (
+              {(["users", "roles"] as const).map((section) => (
                 <Button
                   key={section}
                   className="sidebar-nav-button sidebar-nav-child"
                   aria-current={route.kind === "security" && route.section === section ? "page" : undefined}
                   variant="ghost"
-                  onClick={() => navigate(`/security/${section}`)}
+                  onClick={() => navigate(`/admin/security/${section}`)}
                 >
                   <NavigationIcon name={securitySectionIcons[section]} />
                   {section[0].toUpperCase() + section.slice(1)}
                 </Button>
               ))}
             </div>
-          ) : null}
-        </nav>
+          </nav>
+        ) : (
+          <nav className="sidebar-nav" aria-label="Short links navigation">
+            <div className="sidebar-nav-group">
+              <p className="sidebar-nav-group-label">Workspace</p>
+              <Button
+                className="sidebar-nav-button"
+                aria-current={route.kind === "admin" ? "page" : undefined}
+                variant="ghost"
+                onClick={() => navigate("/short-links")}
+              >
+                <NavigationIcon name="endpoint" />
+                Short links
+              </Button>
+            </div>
+          </nav>
+        )}
 
         <div className="session-panel">
           {currentUser ? (
             <>
               <p>{currentUser.displayName || currentUser.username}</p>
               <code>{currentUser.roles.join(", ") || "No role"}</code>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  clearStoredSession();
-                  navigate("/login");
-                }}
-              >
-                Sign out
-              </Button>
+              <DropdownMenu open={isAccountMenuOpen} onOpenChange={setIsAccountMenuOpen}>
+                <DropdownMenuTrigger
+                  className={isAccountMenuOpen ? "sidebar-account-trigger sidebar-account-trigger-open" : "sidebar-account-trigger"}
+                >
+                  <span>Account</span>
+                  <svg
+                    className="sidebar-account-more"
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                  >
+                    <circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none" />
+                    <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" />
+                    <circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none" />
+                  </svg>
+                </DropdownMenuTrigger>
+                {isAccountMenuOpen ? (
+                  <DropdownMenuContent className="sidebar-account-menu" placement="right-end">
+                    <DropdownMenuItem onClick={() => navigate("/")}>
+                      Back to home
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="account-sign-out"
+                      onClick={() => {
+                        clearStoredSession();
+                        navigate("/login");
+                      }}
+                    >
+                      Sign out
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                ) : null}
+              </DropdownMenu>
             </>
           ) : (
             <Button
@@ -276,15 +318,64 @@ export function App() {
           )}
         </div>
       </aside>
+      ) : null}
 
       <main className="app-main">
-        <header className="topbar">
-          <div>
-            <p className="eyebrow">Shorten Link</p>
-            <h1 className="app-title">{pageTitle}</h1>
-            <p className="page-description">{pageDescription}</p>
+        {route.kind === "home" && currentUser ? (
+          <div className="endpoint-actions">
+            <DropdownMenu open={isAccountMenuOpen} onOpenChange={setIsAccountMenuOpen}>
+              <DropdownMenuTrigger className="account-menu-trigger" aria-label="Open account menu">
+                <span className="account-avatar" aria-hidden="true">
+                  {(currentUser.displayName || currentUser.username).slice(0, 1).toUpperCase()}
+                </span>
+                <span className="account-trigger-copy">
+                  <strong>{currentUser.displayName || currentUser.username}</strong>
+                  <span aria-hidden="true">·</span>
+                  <small>{currentUser.roles.join(", ") || "No role"}</small>
+                </span>
+                <svg
+                  className="account-menu-chevron"
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                >
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </DropdownMenuTrigger>
+              {isAccountMenuOpen ? (
+                <DropdownMenuContent className="account-menu-content">
+                  <DropdownMenuItem onClick={() => navigate("/short-links")}>
+                    Short links management
+                  </DropdownMenuItem>
+                  {hasAdminRole ? (
+                    <DropdownMenuItem onClick={() => navigate("/admin/dashboard")}>
+                      Admin management
+                    </DropdownMenuItem>
+                  ) : null}
+                  <DropdownMenuItem
+                    className="account-sign-out"
+                    onClick={() => {
+                      clearStoredSession();
+                      navigate("/login");
+                    }}
+                  >
+                    Sign out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              ) : null}
+            </DropdownMenu>
           </div>
-        </header>
+        ) : null}
+
+        {route.kind !== "security" && route.kind !== "home" && route.kind !== "admin" && route.kind !== "dashboard" ? (
+          <header className="topbar">
+            <div>
+              <p className="eyebrow">Shorten Link</p>
+              <h1 className="app-title">{pageTitle}</h1>
+              <p className="page-description">{pageDescription}</p>
+            </div>
+          </header>
+        ) : null}
 
         <div className="workspace">
         {route.kind === "home" ? (
@@ -296,6 +387,10 @@ export function App() {
 
         {route.kind === "admin" ? (
           <ShortLinkAdminPage onDirtyChange={setHasAdminEditChanges} />
+        ) : null}
+
+        {route.kind === "dashboard" ? (
+          <AdminDashboardPage />
         ) : null}
 
         {route.kind === "security" ? (
@@ -350,12 +445,6 @@ function NavigationIcon({ name }: { name: NavigationIconName }) {
       <>
         <path d="M20 13c0 5-3.5 7.5-8 9-4.5-1.5-8-4-8-9V5l8-3 8 3v8Z" />
         <path d="m9 12 2 2 4-4" />
-      </>
-    ),
-    permissions: (
-      <>
-        <circle cx="7.5" cy="15.5" r="5.5" />
-        <path d="m21 2-9.6 9.6M15 8l3 3M18 5l3 3" />
       </>
     ),
     "sign-in": (

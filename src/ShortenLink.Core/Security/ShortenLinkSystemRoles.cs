@@ -11,19 +11,7 @@ public static class ShortenLinkSystemRoles
         = new Dictionary<string, IReadOnlySet<string>>(StringComparer.OrdinalIgnoreCase)
         {
             [Owner] = ShortenLinkPermissionCatalog.All,
-            [Admin] = new HashSet<string>(StringComparer.Ordinal)
-            {
-                ShortenLinkPermissionCatalog.ShortLinksRead,
-                ShortenLinkPermissionCatalog.ShortLinksCreate,
-                ShortenLinkPermissionCatalog.ShortLinksUpdate,
-                ShortenLinkPermissionCatalog.ShortLinksActivate,
-                ShortenLinkPermissionCatalog.ShortLinksDeactivate,
-                ShortenLinkPermissionCatalog.ShortLinksDelete,
-                ShortenLinkPermissionCatalog.ShortLinksExport,
-                ShortenLinkPermissionCatalog.AnalyticsRead,
-                ShortenLinkPermissionCatalog.AuditLogsRead,
-                ShortenLinkPermissionCatalog.SecurityAssignmentsManage
-            },
+            [Admin] = ShortenLinkPermissionCatalog.All,
             [Editor] = new HashSet<string>(StringComparer.Ordinal)
             {
                 ShortenLinkPermissionCatalog.ShortLinksRead,

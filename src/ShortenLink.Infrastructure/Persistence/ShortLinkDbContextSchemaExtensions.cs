@@ -122,6 +122,17 @@ public static class ShortLinkDbContextSchemaExtensions
                 """,
                 cancellationToken).ConfigureAwait(false);
 
+            await dbContext.Database.ExecuteSqlRawAsync(
+                """
+                CREATE TABLE IF NOT EXISTS "shorten_link_security_role_permission_overrides" (
+                    "RoleId" TEXT NOT NULL,
+                    "Permission" TEXT NOT NULL,
+                    "IsAllowed" INTEGER NOT NULL,
+                    CONSTRAINT "PK_shorten_link_security_role_permission_overrides" PRIMARY KEY ("RoleId", "Permission")
+                );
+                """,
+                cancellationToken).ConfigureAwait(false);
+
             await EnsureSqliteSecurityIdentityIndexesAsync(dbContext, cancellationToken).ConfigureAwait(false);
             return;
         }
@@ -165,6 +176,17 @@ public static class ShortLinkDbContextSchemaExtensions
                     "KeyHash" character varying(128) NOT NULL,
                     "IsEnabled" boolean NOT NULL,
                     "CreatedAt" timestamp with time zone NOT NULL
+                );
+                """,
+                cancellationToken).ConfigureAwait(false);
+
+            await dbContext.Database.ExecuteSqlRawAsync(
+                """
+                CREATE TABLE IF NOT EXISTS "shorten_link_security_role_permission_overrides" (
+                    "RoleId" character varying(128) NOT NULL,
+                    "Permission" character varying(256) NOT NULL,
+                    "IsAllowed" boolean NOT NULL,
+                    CONSTRAINT "PK_shorten_link_security_role_permission_overrides" PRIMARY KEY ("RoleId", "Permission")
                 );
                 """,
                 cancellationToken).ConfigureAwait(false);
@@ -231,6 +253,12 @@ public static class ShortLinkDbContextSchemaExtensions
             ON "shorten_link_security_user_api_keys" ("IsEnabled");
             """,
             cancellationToken).ConfigureAwait(false);
+        await dbContext.Database.ExecuteSqlRawAsync(
+            """
+            CREATE INDEX IF NOT EXISTS "IX_shorten_link_security_role_permission_overrides_RoleId"
+            ON "shorten_link_security_role_permission_overrides" ("RoleId");
+            """,
+            cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task EnsurePostgresSecurityIdentityIndexesAsync(
@@ -257,6 +285,8 @@ public static class ShortLinkDbContextSchemaExtensions
             ON "shorten_link_security_user_api_keys" ("KeyHash");
             CREATE INDEX IF NOT EXISTS "IX_shorten_link_security_user_api_keys_IsEnabled"
             ON "shorten_link_security_user_api_keys" ("IsEnabled");
+            CREATE INDEX IF NOT EXISTS "IX_shorten_link_security_role_permission_overrides_RoleId"
+            ON "shorten_link_security_role_permission_overrides" ("RoleId");
             """,
             cancellationToken).ConfigureAwait(false);
     }

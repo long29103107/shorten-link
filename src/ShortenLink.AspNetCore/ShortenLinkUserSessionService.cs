@@ -169,25 +169,33 @@ public sealed class ShortenLinkUserSessionService(
         var permissions = new HashSet<string>(StringComparer.Ordinal);
         foreach (var roleId in user.RoleIds)
         {
+            var rolePermissions = new HashSet<string>(StringComparer.Ordinal);
             if (ShortenLinkSystemRoles.PermissionBundles.TryGetValue(roleId, out var systemPermissions))
             {
                 foreach (var permission in systemPermissions)
                 {
-                    permissions.Add(permission);
+                    rolePermissions.Add(permission);
                 }
 
-                continue;
             }
-
-            var customRole = await roleRepository
-                .FindCustomRoleAsync(roleId, cancellationToken)
-                .ConfigureAwait(false);
-            if (customRole is not { IsEnabled: true })
+            else
             {
-                continue;
+                var customRole = await roleRepository
+                    .FindCustomRoleAsync(roleId, cancellationToken)
+                    .ConfigureAwait(false);
+                if (customRole is not { IsEnabled: true })
+                {
+                    continue;
+                }
+
+                foreach (var permission in customRole.Permissions)
+                {
+                    rolePermissions.Add(permission);
+                }
             }
 
-            foreach (var permission in customRole.Permissions)
+            await ApplyPermissionOverridesAsync(rolePermissions, roleId, cancellationToken).ConfigureAwait(false);
+            foreach (var permission in rolePermissions)
             {
                 permissions.Add(permission);
             }
@@ -200,6 +208,21 @@ public sealed class ShortenLinkUserSessionService(
             user.RoleIds,
             permissions.OrderBy(static permission => permission, StringComparer.Ordinal).ToList(),
             issuedAtUtc);
+    }
+
+    private async Task ApplyPermissionOverridesAsync(
+        HashSet<string> permissions,
+        string roleId,
+        CancellationToken cancellationToken)
+    {
+        var overrides = await roleRepository
+            .ListPermissionOverridesAsync(roleId, cancellationToken)
+            .ConfigureAwait(false);
+        foreach (var item in overrides)
+        {
+            if (item.IsAllowed) permissions.Add(item.Permission);
+            else permissions.Remove(item.Permission);
+        }
     }
 
     private string CreateToken(ShortenLinkSecurityUser user, DateTimeOffset issuedAtUtc, string kind)

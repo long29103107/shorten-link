@@ -20,7 +20,7 @@ describe("admin discovery", () => {
 
   test("omits an empty search while preserving explicit defaults", () => {
     expect(buildShortLinkListUrl(25, 1, defaultShortLinkDiscoveryQuery)).toBe(
-      "/api/short-links?limit=25&page=1&status=all&sortBy=created&sortDirection=desc&sort=-CreatedAt"
+      "/api/short-links?limit=25&page=1&status=active&sortBy=created&sortDirection=desc&sort=-CreatedAt"
     );
     expect(hasShortLinkDiscoveryCriteria(defaultShortLinkDiscoveryQuery)).toBe(false);
   });

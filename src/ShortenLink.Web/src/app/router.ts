@@ -5,17 +5,21 @@ export function parseRoute(pathname: string): AppRoute {
     return { kind: "home" };
   }
 
-  if (pathname === "/admin") {
+  if (pathname === "/short-links") {
     return { kind: "admin" };
   }
 
-  if (pathname === "/security") {
+  if (pathname === "/admin/dashboard") {
+    return { kind: "dashboard" };
+  }
+
+  if (pathname === "/admin/security") {
     return { kind: "security", section: "users" };
   }
 
-  const securityMatch = /^\/security\/(users|roles|permissions)$/.exec(pathname);
+  const securityMatch = /^\/admin\/security\/(users|roles)$/.exec(pathname);
   if (securityMatch) {
-    return { kind: "security", section: securityMatch[1] as "users" | "roles" | "permissions" };
+    return { kind: "security", section: securityMatch[1] as "users" | "roles" };
   }
 
   if (pathname === "/login") {

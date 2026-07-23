@@ -11,15 +11,16 @@ type FormFieldProps = {
   autoComplete?: string;
   placeholder?: string;
   required?: boolean;
+  disabled?: boolean;
   onChange: (value: string) => void;
 };
 
-export function FormField({ id, label, value, error, type = "text", autoComplete, placeholder, required, onChange }: FormFieldProps) {
+export function FormField({ id, label, value, error, type = "text", autoComplete, placeholder, required, disabled, onChange }: FormFieldProps) {
   const errorId = `${id}-error`;
   return (
     <Label className="field" htmlFor={id}>
       <span className="field-label">{label}{required ? <span className="required-marker"> *</span> : null}</span>
-      <Input id={id} type={type} value={value} autoComplete={autoComplete} placeholder={placeholder} aria-invalid={error ? "true" : undefined} aria-describedby={error ? errorId : undefined} onChange={(event) => onChange(event.target.value)} />
+      <Input id={id} type={type} value={value} autoComplete={autoComplete} placeholder={placeholder} disabled={disabled} aria-invalid={error ? "true" : undefined} aria-describedby={error ? errorId : undefined} onChange={(event) => onChange(event.target.value)} />
       {error ? <span id={errorId} className="field-error">{error}</span> : null}
     </Label>
   );

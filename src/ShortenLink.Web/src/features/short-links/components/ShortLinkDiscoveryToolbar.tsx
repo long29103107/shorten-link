@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "../../../shared/components/ui/button";
 import { Input } from "../../../shared/components/ui/input";
 import type { ShortLinkDiscoveryQuery } from "../types";
@@ -7,7 +7,7 @@ import { useDebouncedCallback } from "../../../shared/hooks/useDebouncedCallback
 
 export const defaultShortLinkDiscoveryQuery: ShortLinkDiscoveryQuery = {
   search: "",
-  status: "all",
+  status: "active",
   sortBy: "created",
   sortDirection: "desc"
 };
@@ -27,31 +27,27 @@ type ShortLinkDiscoveryToolbarProps = {
   value: ShortLinkDiscoveryQuery;
   disabled?: boolean;
   onChange: (value: ShortLinkDiscoveryQuery) => void;
+  action?: ReactNode;
 };
 
 export function ShortLinkDiscoveryToolbar({
   value,
   disabled = false,
-  onChange
+  onChange,
+  action
 }: ShortLinkDiscoveryToolbarProps) {
   const [search, setSearch] = useState(value.search);
   const debouncedSearch = useDebouncedCallback((nextSearch: string) => {
     onChange({ ...value, search: nextSearch.trim() });
-  }, 350);
+  }, 400);
 
   useEffect(() => {
     debouncedSearch.cancel();
     setSearch(value.search);
   }, [value.search]);
 
-  const submitSearch = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    debouncedSearch.cancel();
-    onChange({ ...value, search: search.trim() });
-  };
-
   return (
-    <form className="admin-discovery-toolbar" aria-label="Find and sort short links" onSubmit={submitSearch}>
+    <div className="admin-discovery-toolbar" aria-label="Filter short links">
       <div className="admin-discovery-search">
         <Input
           value={search}
@@ -63,30 +59,11 @@ export function ShortLinkDiscoveryToolbar({
             debouncedSearch.invoke(event.target.value);
           }}
         />
-        <Button type="submit" variant="secondary" disabled={disabled}>
-          Search
-        </Button>
       </div>
 
       <DiscoverySelect label="Status" value={value.status} disabled={disabled} onChange={(status) => onChange({ ...value, status })}>
-          <option value="all">All</option>
           <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
-          <option value="expired">Expired</option>
-          <option value="expiring-soon">Expiring soon</option>
-      </DiscoverySelect>
-
-      <DiscoverySelect label="Sort by" value={value.sortBy} disabled={disabled} onChange={(sortBy) => onChange({ ...value, sortBy })}>
-          <option value="created">Created date</option>
-          <option value="expiry">Expiry</option>
-          <option value="destination">Destination</option>
-          <option value="code">Code</option>
-          <option value="status">Status</option>
-      </DiscoverySelect>
-
-      <DiscoverySelect label="Direction" value={value.sortDirection} disabled={disabled} onChange={(sortDirection) => onChange({ ...value, sortDirection })}>
-          <option value="desc">Descending</option>
-          <option value="asc">Ascending</option>
+          <option value="inactive">Deactivated</option>
       </DiscoverySelect>
 
       {hasShortLinkDiscoveryCriteria(value) || search !== value.search ? (
@@ -102,6 +79,7 @@ export function ShortLinkDiscoveryToolbar({
           Reset
         </Button>
       ) : null}
-    </form>
+      {action ? <div className="admin-discovery-action">{action}</div> : null}
+    </div>
   );
 }

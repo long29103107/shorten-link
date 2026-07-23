@@ -7,11 +7,15 @@ describe("security navigation", () => {
     expect(parseRoute("/login")).toEqual({ kind: "login" });
   });
 
-  test("routes security sidebar destinations and keeps the legacy default", () => {
-    expect(parseRoute("/security")).toEqual({ kind: "security", section: "users" });
-    expect(parseRoute("/security/users")).toEqual({ kind: "security", section: "users" });
-    expect(parseRoute("/security/roles")).toEqual({ kind: "security", section: "roles" });
-    expect(parseRoute("/security/permissions")).toEqual({ kind: "security", section: "permissions" });
+  test("routes admin security sidebar destinations", () => {
+    expect(parseRoute("/short-links")).toEqual({ kind: "admin" });
+    expect(parseRoute("/admin/dashboard")).toEqual({ kind: "dashboard" });
+    expect(parseRoute("/admin")).toEqual({ kind: "status", statusCode: 404 });
+    expect(parseRoute("/admin/security")).toEqual({ kind: "security", section: "users" });
+    expect(parseRoute("/admin/security/users")).toEqual({ kind: "security", section: "users" });
+    expect(parseRoute("/admin/security/roles")).toEqual({ kind: "security", section: "roles" });
+    expect(parseRoute("/admin/security/permissions")).toEqual({ kind: "status", statusCode: 404 });
+    expect(parseRoute("/security/users")).toEqual({ kind: "status", statusCode: 404 });
   });
 
   test("maps invalid login errors to form-friendly copy", () => {

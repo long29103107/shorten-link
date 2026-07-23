@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ApiError } from "../api/http";
 import {
   activateShortLink,
@@ -24,23 +24,11 @@ import {
   shouldPreserveMutationContext,
   type RecoveryNotice
 } from "../../../shared/api/recovery";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger
-} from "../../../shared/components/ui/dropdown-menu";
+import { RowActionsMenu } from "../../../shared/components/RowActionsMenu";
 import { Input } from "../../../shared/components/ui/input";
 import { Label } from "../../../shared/components/ui/label";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow
-} from "../../../shared/components/ui/table";
-import { useClickOutside } from "../../../shared/hooks/useClickOutside";
+import { DataTable } from "../../../shared/components/DataTable";
+import { Pagination } from "../../../shared/components/Pagination";
 import { ExpiryQuickPicks } from "../components/ExpiryQuickPicks";
 import {
   defaultShortLinkDiscoveryQuery,
@@ -54,7 +42,6 @@ import {
   validateShortLinkForm,
   type ShortLinkFieldErrors
 } from "../validation";
-import { toggleShortLinkSort } from "../queryExpression";
 
 type ShortLinkAdminPageProps = {
   onDirtyChange?: (isDirty: boolean) => void;
@@ -94,20 +81,16 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
   const [discoveryQuery, setDiscoveryQuery] = useState<ShortLinkDiscoveryQuery>(
     defaultShortLinkDiscoveryQuery
   );
-  const [isPageSizeMenuOpen, setIsPageSizeMenuOpen] = useState(false);
   const [analyticsCode, setAnalyticsCode] = useState<string | null>(null);
   const [analyticsData, setAnalyticsData] = useState<ShortLinkAnalytics | null>(null);
   const [analyticsError, setAnalyticsError] = useState<string | null>(null);
   const [isAnalyticsRetryable, setIsAnalyticsRetryable] = useState(false);
   const [isAnalyticsLoading, setIsAnalyticsLoading] = useState(false);
   const copyFeedbackTimeoutRef = useRef<number | null>(null);
-  const pageSizeMenuRef = useRef<HTMLLabelElement | null>(null);
   const adminPermissions = getAdminPermissionState();
 
   const selectedLinks = links.filter((link) => selectedCodes.has(link.code));
   const selectedCount = selectedCodes.size;
-  const allPageCodes = links.map((link) => link.code);
-  const isPageSelected = allPageCodes.length > 0 && allPageCodes.every((code) => selectedCodes.has(code));
   const canBulkDeactivate = adminPermissions.canDeactivate && selectedLinks.some((link) => link.isActive);
   const canBulkActivate = adminPermissions.canActivate && selectedLinks.some((link) => !link.isActive);
   const canBulkDelete = adminPermissions.canDelete;
@@ -158,12 +141,6 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
   useEffect(() => {
     onDirtyChange?.(hasEditChanges);
   }, [hasEditChanges, onDirtyChange]);
-
-  useClickOutside(
-    [pageSizeMenuRef],
-    () => setIsPageSizeMenuOpen(false),
-    isPageSizeMenuOpen
-  );
 
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -632,32 +609,6 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
     });
   };
 
-  const toggleSelected = (code: string) => {
-    setSelectedCodes((current) => {
-      const next = new Set(current);
-      if (next.has(code)) {
-        next.delete(code);
-      } else {
-        next.add(code);
-      }
-
-      return next;
-    });
-  };
-
-  const togglePageSelected = () => {
-    setSelectedCodes((current) => {
-      const next = new Set(current);
-      if (isPageSelected) {
-        allPageCodes.forEach((code) => next.delete(code));
-      } else {
-        allPageCodes.forEach((code) => next.add(code));
-      }
-
-      return next;
-    });
-  };
-
   const goToPage = (nextPageNumber: number) => {
     void loadLinks(Math.max(1, Math.min(nextPageNumber, totalPages)));
   };
@@ -668,27 +619,84 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
     setDiscoveryQuery(change.query);
   };
 
-  const handleTableSort = (sortBy: ShortLinkDiscoveryQuery["sortBy"]) => {
-    handleDiscoveryChange(toggleShortLinkSort(discoveryQuery, sortBy));
-  };
-
   const hasRowActions = (link: ShortLinkAdminItem) =>
     adminPermissions.canReadAnalytics
     || adminPermissions.canUpdate
     || (link.isActive ? adminPermissions.canDeactivate : adminPermissions.canActivate)
     || adminPermissions.canDelete;
 
+  const renderDestination = (link: ShortLinkAdminItem) => (
+    <a
+      className="destination-link"
+      href={link.originalUrl}
+      target="_blank"
+      rel="noreferrer"
+      onBlur={() => setTooltip(null)}
+      onFocus={(event) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        setTooltip({ text: link.originalUrl, x: rect.left, y: rect.top });
+      }}
+      onMouseEnter={(event) => setTooltip({ text: link.originalUrl, x: event.clientX, y: event.clientY })}
+      onMouseLeave={() => setTooltip(null)}
+      onMouseMove={(event) => setTooltip({ text: link.originalUrl, x: event.clientX, y: event.clientY })}
+    >
+      {link.originalUrl}
+    </a>
+  );
+
+  const renderActions = (link: ShortLinkAdminItem) => (
+    <div className="admin-row-actions">
+      <button
+        className={copiedCode === link.code ? "copy-icon-button copy-icon-button-done" : "copy-icon-button"}
+        type="button"
+        disabled={copiedCode === link.code}
+        aria-label={`Copy short URL for ${link.code}`}
+        title={copiedCode === link.code ? "Copied" : "Copy"}
+        onClick={(event) => handleCopy(link, event.currentTarget)}
+      >
+        <span aria-hidden="true" />
+      </button>
+      {hasRowActions(link) ? (
+        <RowActionsMenu
+          label={`Actions for ${link.code}`}
+          open={openMenuCode === link.code}
+          onOpenChange={(open) => setOpenMenuCode(open ? link.code : null)}
+          actions={[
+            ...(adminPermissions.canReadAnalytics ? [{ id: "analytics", label: "Analytics", onSelect: () => void openAnalyticsPanel(link) }] : []),
+            ...(adminPermissions.canUpdate ? [{ id: "edit", label: "Edit", onSelect: () => startEdit(link) }] : []),
+            ...((link.isActive ? adminPermissions.canDeactivate : adminPermissions.canActivate) ? [{
+              id: "status",
+              label: busyCode === link.code ? "Updating" : link.isActive ? "Deactivate" : "Activate",
+              disabled: busyCode === link.code,
+              onSelect: () => requestStatusChange(link)
+            }] : []),
+            ...(adminPermissions.canDelete ? [{
+              id: "delete",
+              label: "Delete",
+              destructive: true,
+              disabled: busyCode === link.code,
+              onSelect: () => requestDelete(link.code)
+            }] : [])
+          ]}
+        />
+      ) : null}
+    </div>
+  );
+
   return (
-    <Card className="admin-panel">
-      <CardHeader className="panel-heading-wide">
-        <div className="card-title-row">
-          <span className="card-glyph" aria-hidden="true" />
+    <>
+      <nav className="page-breadcrumb-bar" aria-label="Breadcrumb">
+        <ol className="page-breadcrumb">
+          <li>Shorten Link</li>
+          <li aria-current="page">Short links management</li>
+        </ol>
+      </nav>
+      <Card className="admin-panel">
+        <CardHeader className="panel-heading-wide">
           <div>
-          <p className="eyebrow">Admin</p>
-          <CardTitle>Manage generated short links.</CardTitle>
+            <p className="eyebrow">Short links</p>
+            <CardTitle>Manage generated short links</CardTitle>
           </div>
-        </div>
-        <div className="admin-header-actions">
           <Button
             disabled={!adminPermissions.canCreate}
             title={adminPermissions.canCreate ? "Create" : "Missing short_links.create permission"}
@@ -696,56 +704,13 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
           >
             Create
           </Button>
-        </div>
-      </CardHeader>
-
-      <CardContent>
+        </CardHeader>
+        <CardContent>
       <ShortLinkDiscoveryToolbar
         value={discoveryQuery}
         disabled={isLoading}
         onChange={handleDiscoveryChange}
       />
-
-      {shouldShowList && selectedCount > 0 && hasBulkActions ? (
-      <div className="admin-bulk-bar">
-        <div className="admin-toolbar-group">
-          {canBulkDeactivate ? (
-          <Button
-            variant="secondary"
-            disabled={isBulkUpdating || isBulkDeleting}
-            onClick={() => requestBulkStatusChange(false)}
-          >
-            {isBulkUpdating ? "Updating..." : `Deactivate selected (${selectedCount})`}
-          </Button>
-          ) : null}
-          {canBulkActivate ? (
-          <Button
-            variant="secondary"
-            disabled={isBulkUpdating || isBulkDeleting}
-            onClick={() => requestBulkStatusChange(true)}
-          >
-            {isBulkUpdating ? "Updating..." : `Activate selected (${selectedCount})`}
-          </Button>
-          ) : null}
-          {canBulkDelete ? (
-          <Button
-            variant="destructive"
-            disabled={isBulkDeleting || isBulkUpdating}
-            onClick={requestBulkDelete}
-          >
-            {isBulkDeleting ? "Deleting..." : `Delete selected (${selectedCount})`}
-          </Button>
-          ) : null}
-          <Button
-            variant="secondary"
-            disabled={isBulkDeleting || isBulkUpdating}
-            onClick={() => setSelectedCodes(new Set())}
-          >
-            Clear selected
-          </Button>
-        </div>
-      </div>
-      ) : null}
 
       {isLoading ? <TableSkeleton /> : null}
 
@@ -790,226 +755,56 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
       ) : null}
 
       {shouldShowList ? (
-        <div className="admin-table-wrap">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>
-                  <input
-                    type="checkbox"
-                    className="bulk-checkbox"
-                    checked={isPageSelected}
-                    disabled={links.length === 0}
-                    aria-label="Select all links on this page"
-                    onChange={togglePageSelected}
-                  />
-                </TableHead>
-                <SortableTableHead label="Code" field="code" query={discoveryQuery} onSort={handleTableSort} />
-                <SortableTableHead label="Destination" field="destination" query={discoveryQuery} onSort={handleTableSort} />
-                <SortableTableHead label="Created" field="created" query={discoveryQuery} onSort={handleTableSort} />
-                <SortableTableHead label="Expiry" field="expiry" query={discoveryQuery} onSort={handleTableSort} />
-                <SortableTableHead label="Status" field="status" query={discoveryQuery} onSort={handleTableSort} />
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {links.map((link) => (
-                <Fragment key={link.code}>
-                <TableRow>
-                  <TableCell>
-                    <input
-                      type="checkbox"
-                      className="bulk-checkbox"
-                      checked={selectedCodes.has(link.code)}
-                      aria-label={`Select ${link.code}`}
-                      onChange={() => toggleSelected(link.code)}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <a href={link.shortUrl} target="_blank" rel="noreferrer">
-                      {link.code}
-                    </a>
-                  </TableCell>
-                  <TableCell className="admin-url-cell">
-                    <a
-                      className="destination-link"
-                      href={link.originalUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      onBlur={() => setTooltip(null)}
-                      onFocus={(event) => {
-                        const rect = event.currentTarget.getBoundingClientRect();
-                        setTooltip({
-                          text: link.originalUrl,
-                          x: rect.left,
-                          y: rect.top
-                        });
-                      }}
-                      onMouseEnter={(event) =>
-                        setTooltip({
-                          text: link.originalUrl,
-                          x: event.clientX,
-                          y: event.clientY
-                        })
-                      }
-                      onMouseLeave={() => setTooltip(null)}
-                      onMouseMove={(event) =>
-                        setTooltip({
-                          text: link.originalUrl,
-                          x: event.clientX,
-                          y: event.clientY
-                        })
-                      }
-                    >
-                      {link.originalUrl}
-                    </a>
-                  </TableCell>
-                  <TableCell>{formatDateTime(link.createdAtUtc)}</TableCell>
-                  <TableCell>{formatDateTime(link.expiredAtUtc)}</TableCell>
-                  <TableCell>
-                    <Badge variant={link.isActive ? "default" : "destructive"}>
-                      {link.isActive ? "Active" : "Inactive"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="admin-row-actions">
-                      <button
-                        className={copiedCode === link.code ? "copy-icon-button copy-icon-button-done" : "copy-icon-button"}
-                        type="button"
-                        disabled={copiedCode === link.code}
-                        aria-label={`Copy short URL for ${link.code}`}
-                        title={copiedCode === link.code ? "Copied" : "Copy"}
-                        onClick={(event) => handleCopy(link, event.currentTarget)}
-                      >
-                        <span aria-hidden="true" />
-                      </button>
-                      {hasRowActions(link) ? (
-                      <DropdownMenu
-                        open={openMenuCode === link.code}
-                        onOpenChange={(open) =>
-                          setOpenMenuCode(open ? link.code : null)
-                        }
-                      >
-                        <DropdownMenuTrigger
-                          aria-expanded={openMenuCode === link.code}
-                          aria-label={`Actions for ${link.code}`}
-                        >
-                          ...
-                        </DropdownMenuTrigger>
-                        {openMenuCode === link.code ? (
-                          <DropdownMenuContent>
-                            {adminPermissions.canReadAnalytics ? (
-                            <DropdownMenuItem onClick={() => void openAnalyticsPanel(link)}>
-                              Analytics
-                            </DropdownMenuItem>
-                            ) : null}
-                            {adminPermissions.canUpdate ? (
-                            <DropdownMenuItem onClick={() => startEdit(link)}>
-                              Edit
-                            </DropdownMenuItem>
-                            ) : null}
-                            {(link.isActive
-                              ? adminPermissions.canDeactivate
-                              : adminPermissions.canActivate) ? (
-                            <DropdownMenuItem
-                              disabled={busyCode === link.code}
-                              onClick={() => requestStatusChange(link)}
-                            >
-                              {busyCode === link.code
-                                ? "Updating"
-                                : link.isActive
-                                  ? "Deactivate"
-                                  : "Activate"}
-                            </DropdownMenuItem>
-                            ) : null}
-                            {adminPermissions.canDelete ? (
-                            <DropdownMenuItem
-                              className="danger-link"
-                              disabled={busyCode === link.code}
-                              onClick={() => requestDelete(link.code)}
-                            >
-                              Delete
-                            </DropdownMenuItem>
-                            ) : null}
-                          </DropdownMenuContent>
-                        ) : null}
-                      </DropdownMenu>
-                      ) : null}
-                    </div>
-                  </TableCell>
-                </TableRow>
-                </Fragment>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+        <DataTable
+          ariaLabel="Short links"
+          rows={links}
+          getRowKey={(link) => link.code}
+          bulkSelection={hasBulkActions ? {
+            selectedKeys: selectedCodes,
+            onChange: setSelectedCodes,
+            getRowLabel: (link) => `Select ${link.code}`,
+            clearDisabled: isBulkDeleting || isBulkUpdating,
+            actions: [
+              ...(canBulkDeactivate ? [{
+                id: "deactivate",
+                label: isBulkUpdating ? "Updating..." : (count: number) => `Deactivate selected (${count})`,
+                disabled: isBulkUpdating || isBulkDeleting,
+                onSelect: () => requestBulkStatusChange(false)
+              }] : []),
+              ...(canBulkActivate ? [{
+                id: "activate",
+                label: isBulkUpdating ? "Updating..." : (count: number) => `Activate selected (${count})`,
+                disabled: isBulkUpdating || isBulkDeleting,
+                onSelect: () => requestBulkStatusChange(true)
+              }] : []),
+              ...(canBulkDelete ? [{
+                id: "delete",
+                label: isBulkDeleting ? "Deleting..." : (count: number) => `Delete selected (${count})`,
+                variant: "destructive" as const,
+                disabled: isBulkDeleting || isBulkUpdating,
+                onSelect: requestBulkDelete
+              }] : [])
+            ]
+          } : undefined}
+          columns={[
+            { id: "code", header: "Code", cell: (link) => <a href={link.shortUrl} target="_blank" rel="noreferrer">{link.code}</a> },
+            { id: "destination", header: "Destination", cellProps: { className: "admin-url-cell" }, cell: renderDestination },
+            { id: "created", header: "Created", cell: (link) => formatDateTime(link.createdAtUtc) },
+            { id: "expiry", header: "Expiry", cell: (link) => formatDateTime(link.expiredAtUtc) },
+            { id: "status", header: "Status", cell: (link) => <Badge variant={link.isActive ? "default" : "destructive"}>{link.isActive ? "Active" : "Inactive"}</Badge> },
+            { id: "actions", header: "Actions", cell: renderActions }
+          ]}
+        />
       ) : null}
       {shouldShowList ? (
-      <div className="admin-pagination">
-        <div className="pagination-summary">
-          <span>{totalCount} items</span>
-          <span>Page {pageNumber} of {totalPages}</span>
-        </div>
-        <div className="pagination-controls">
-          <label className="pagination-page-size" ref={pageSizeMenuRef}>
-            <button
-              type="button"
-              className="pagination-page-size-trigger"
-              aria-expanded={isPageSizeMenuOpen}
-              aria-haspopup="listbox"
-              onClick={() => setIsPageSizeMenuOpen((current) => !current)}
-            >
-              {pageSize}
-            </button>
-            <span>/ page</span>
-            {isPageSizeMenuOpen ? (
-              <div className="pagination-page-size-menu" role="listbox">
-                {[10, 25, 50, 100].map((size) => (
-                  <button
-                    key={size}
-                    type="button"
-                    className={size === pageSize ? "pagination-page-size-option pagination-page-size-option-active" : "pagination-page-size-option"}
-                    role="option"
-                    aria-selected={size === pageSize}
-                    onClick={() => {
-                      setPageSize(size);
-                      setIsPageSizeMenuOpen(false);
-                    }}
-                  >
-                    {size}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </label>
-        <div className="pagination-pages" aria-label="Pagination">
-          {pageNumber > 1 ? (
-          <button type="button" className="pagination-arrow pagination-arrow-prev" aria-label="Previous page" onClick={() => goToPage(pageNumber - 1)}>
-            ‹
-          </button>
-          ) : null}
-          {getVisiblePages(pageNumber, totalPages).map((item, index) =>
-            item === "gap" ? (
-              <span key={`gap-${index}`} className="pagination-gap">...</span>
-            ) : (
-              <button
-                key={item}
-                type="button"
-                className={item === pageNumber ? "pagination-page pagination-page-active" : "pagination-page"}
-                onClick={() => goToPage(item)}
-              >
-                {item}
-              </button>
-            )
-          )}
-          {pageNumber < totalPages ? (
-          <button type="button" className="pagination-arrow pagination-arrow-next" aria-label="Next page" onClick={() => goToPage(pageNumber + 1)}>
-            ›
-          </button>
-          ) : null}
-        </div>
-        </div>
-      </div>
+        <Pagination
+          totalItems={totalCount}
+          page={pageNumber}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          onPageChange={goToPage}
+          onPageSizeChange={setPageSize}
+        />
       ) : null}
       {tooltip ? (
         <div
@@ -1130,7 +925,7 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
                   ? "Saving"
                   : isCreating
                     ? "Create"
-                    : "Save"}
+                    : "Save changes"}
               </Button>
             </div>
           </div>
@@ -1217,8 +1012,8 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
           </div>
         </div>
       ) : null}
-      </CardContent>
-      <ConfirmDialog
+        </CardContent>
+        <ConfirmDialog
         open={confirmAction !== null}
         title={confirmAction?.title ?? ""}
         description={confirmAction?.description ?? ""}
@@ -1230,8 +1025,9 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
           action?.onConfirm();
         }}
         onCancel={() => setConfirmAction(null)}
-      />
-    </Card>
+        />
+      </Card>
+    </>
   );
 }
 
@@ -1247,37 +1043,4 @@ function toDateTimeLocalValue(value: string | null): string {
 
   const offsetMs = date.getTimezoneOffset() * 60_000;
   return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
-}
-
-function SortableTableHead({ label, field, query, onSort }: {
-  label: string;
-  field: ShortLinkDiscoveryQuery["sortBy"];
-  query: ShortLinkDiscoveryQuery;
-  onSort: (field: ShortLinkDiscoveryQuery["sortBy"]) => void;
-}) {
-  const active = query.sortBy === field;
-  return (
-    <TableHead aria-sort={active ? (query.sortDirection === "asc" ? "ascending" : "descending") : "none"}>
-      <button type="button" className={active ? "table-sort-button table-sort-button-active" : "table-sort-button"} onClick={() => onSort(field)}>
-        <span>{label}</span>
-        <span className="table-sort-indicator" aria-hidden="true">{active ? (query.sortDirection === "asc" ? "↑" : "↓") : "↕"}</span>
-      </button>
-    </TableHead>
-  );
-}
-
-function getVisiblePages(currentPage: number, totalPages: number): Array<number | "gap"> {
-  if (totalPages <= 7) {
-    return Array.from({ length: totalPages }, (_, index) => index + 1);
-  }
-
-  if (currentPage <= 4) {
-    return [1, 2, 3, 4, 5, "gap", totalPages];
-  }
-
-  if (currentPage >= totalPages - 3) {
-    return [1, "gap", totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
-  }
-
-  return [1, "gap", currentPage - 1, currentPage, currentPage + 1, "gap", totalPages];
 }

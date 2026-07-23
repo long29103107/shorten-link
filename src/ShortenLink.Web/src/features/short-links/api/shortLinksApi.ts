@@ -14,7 +14,8 @@ import type {
   SecurityCurrentUser,
   SecurityLoginResponse,
   SecurityRole,
-  SecurityRoleDisabled,
+  SecurityRolePermissionOverridesRequest,
+  SecurityRoleDeleted,
   SecurityRolesList,
   SecurityUser,
   SecurityUserApiKey,
@@ -162,10 +163,23 @@ export async function upsertCustomSecurityRole(
   });
 }
 
-export async function disableCustomSecurityRole(id: string): Promise<SecurityRoleDisabled> {
-  return fetchJson<SecurityRoleDisabled>(
-    `/api/security/roles/custom/${encodeURIComponent(id)}/disable`,
-    { method: "POST" }
+export async function deleteCustomSecurityRole(id: string): Promise<SecurityRoleDeleted> {
+  return fetchJson<SecurityRoleDeleted>(
+    `/api/security/roles/custom/${encodeURIComponent(id)}`,
+    { method: "DELETE" }
+  );
+}
+
+export async function replaceSecurityRolePermissionOverrides(
+  roleId: string,
+  request: SecurityRolePermissionOverridesRequest
+): Promise<SecurityRole> {
+  return fetchJson<SecurityRole>(
+    `/api/security/roles/${encodeURIComponent(roleId)}/permission-overrides`,
+    {
+      method: "PUT",
+      body: JSON.stringify(request)
+    }
   );
 }
 

@@ -5,6 +5,7 @@ namespace ShortenLink.Core.Security;
 
 public static class ShortenLinkSecurityCredentialHasher
 {
+    public const string PasswordNotSetHash = "password-not-set";
     private const int PasswordSaltLength = 16;
     private const int PasswordHashLength = 32;
     private const int PasswordIterations = 100_000;

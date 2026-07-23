@@ -17,6 +17,9 @@ public sealed class ShortenLinkSecurityIdentityTests
         Assert.Contains(ShortenLinkPermissionCatalog.ShortLinksRead, roles[ShortenLinkSystemRoles.Viewer]);
         Assert.Contains(ShortenLinkPermissionCatalog.AnalyticsRead, roles[ShortenLinkSystemRoles.Viewer]);
         Assert.DoesNotContain(ShortenLinkPermissionCatalog.ShortLinksDelete, roles[ShortenLinkSystemRoles.Viewer]);
+        Assert.Equal(
+            ShortenLinkPermissionCatalog.All.OrderBy(permission => permission),
+            roles[ShortenLinkSystemRoles.Admin].OrderBy(permission => permission));
     }
 
     [Fact]

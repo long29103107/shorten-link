@@ -1,6 +1,7 @@
 export type AppRoute =
   | { kind: "home" }
   | { kind: "admin" }
+  | { kind: "dashboard" }
   | { kind: "security"; section: SecuritySection }
   | { kind: "login" }
   | { kind: "detail"; code: string }
@@ -8,7 +9,7 @@ export type AppRoute =
 
 export type HttpStatusCode = 401 | 403 | 404;
 
-export type SecuritySection = "users" | "roles" | "permissions";
+export type SecuritySection = "users" | "roles";
 
 export type ShortLinkFormInput = {
   originalUrl: string;
@@ -140,10 +141,17 @@ export type SecurityRole = {
   id: string;
   name: string;
   permissions: string[];
+  defaultPermissions: string[];
+  permissionOverrides: SecurityRolePermissionOverride[];
   isSystem: boolean;
   isEnabled: boolean;
   canDelete: boolean;
   createdAtUtc: string | null;
+};
+
+export type SecurityRolePermissionOverride = {
+  permission: string;
+  isAllowed: boolean;
 };
 
 export type SecurityRolesList = {
@@ -158,9 +166,12 @@ export type SecurityCustomRoleUpsertRequest = {
   isEnabled: boolean;
 };
 
-export type SecurityRoleDisabled = {
+export type SecurityRoleDeleted = {
   id: string;
-  isEnabled: boolean;
+};
+
+export type SecurityRolePermissionOverridesRequest = {
+  overrides: SecurityRolePermissionOverride[];
 };
 
 export type SecurityUser = {
@@ -265,6 +276,8 @@ export function toFriendlyErrorMessage(errorCode: string, fallbackMessage: strin
       return "Complete the user fields.";
     case "system_role_immutable":
       return "System roles cannot be changed.";
+    case "role_in_use":
+      return fallbackMessage;
     case "bootstrap_user_immutable":
       return "The bootstrap admin user cannot be changed here.";
     default:

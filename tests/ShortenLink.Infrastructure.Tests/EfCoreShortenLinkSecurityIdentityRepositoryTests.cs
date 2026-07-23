@@ -38,7 +38,7 @@ public sealed class EfCoreShortenLinkSecurityIdentityRepositoryTests
     }
 
     [Fact]
-    public async Task CustomRoleRepository_DisablesExistingRole()
+    public async Task CustomRoleRepository_DeletesExistingRole()
     {
         await using var database = await SqliteTestDatabase.CreateAsync();
         await using var context = database.CreateContext();
@@ -50,12 +50,11 @@ public sealed class EfCoreShortenLinkSecurityIdentityRepositoryTests
             isEnabled: true,
             DateTimeOffset.UtcNow));
 
-        var disabled = await repository.DisableCustomRoleAsync("support");
+        var deleted = await repository.DeleteCustomRoleAsync("support");
         var stored = await repository.FindCustomRoleAsync("support");
 
-        Assert.True(disabled);
-        Assert.NotNull(stored);
-        Assert.False(stored.IsEnabled);
+        Assert.True(deleted);
+        Assert.Null(stored);
     }
 
     [Fact]
@@ -76,7 +75,7 @@ public sealed class EfCoreShortenLinkSecurityIdentityRepositoryTests
         Assert.True(admin.IsBootstrap);
         Assert.True(admin.IsHidden);
         Assert.True(admin.IsEnabled);
-        Assert.Equal(new[] { ShortenLinkSystemRoles.Owner }, admin.RoleIds);
+        Assert.Equal(new[] { ShortenLinkSystemRoles.Admin }, admin.RoleIds);
         Assert.DoesNotContain("admin", admin.PasswordHash, StringComparison.Ordinal);
         Assert.Single(hiddenUsers);
         Assert.Empty(visibleUsers);
@@ -194,6 +193,7 @@ public sealed class EfCoreShortenLinkSecurityIdentityRepositoryTests
         var tables = await database.GetTableNamesAsync();
 
         Assert.Contains("shorten_link_security_custom_roles", tables);
+        Assert.Contains("shorten_link_security_role_permission_overrides", tables);
         Assert.Contains("shorten_link_security_users", tables);
         Assert.Contains("shorten_link_security_user_api_keys", tables);
     }
@@ -216,6 +216,9 @@ public sealed class EfCoreShortenLinkSecurityIdentityRepositoryTests
         Assert.Contains(
             "IX_shorten_link_security_custom_roles_Name",
             GetIndexNames<ShortenLinkCustomRoleRecord>(context));
+        Assert.Contains(
+            "IX_shorten_link_security_role_permission_overrides_RoleId",
+            GetIndexNames<ShortenLinkRolePermissionOverrideRecord>(context));
     }
 
     private static HashSet<string> GetIndexNames<TRecord>(ShortLinkDbContext context)

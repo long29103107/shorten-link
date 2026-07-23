@@ -91,7 +91,15 @@ export function DropdownMenuTrigger({
   );
 }
 
-export function DropdownMenuContent({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+type DropdownMenuContentProps = HTMLAttributes<HTMLDivElement> & {
+  placement?: "bottom-end" | "right-end";
+};
+
+export function DropdownMenuContent({
+  className,
+  placement = "bottom-end",
+  ...props
+}: DropdownMenuContentProps) {
   const context = useContext(DropdownMenuContext);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const [style, setStyle] = useState<CSSProperties>({ visibility: "hidden" });
@@ -105,11 +113,17 @@ export function DropdownMenuContent({ className, ...props }: HTMLAttributes<HTML
     const updatePosition = () => {
       const rect = trigger.getBoundingClientRect();
       const contentWidth = contentRef.current?.offsetWidth ?? 174;
-      const left = Math.max(12, Math.min(rect.right - contentWidth, window.innerWidth - contentWidth - 12));
+      const contentHeight = contentRef.current?.offsetHeight ?? 80;
+      const left = placement === "right-end"
+        ? Math.max(12, Math.min(rect.right + 8, window.innerWidth - contentWidth - 12))
+        : Math.max(12, Math.min(rect.right - contentWidth, window.innerWidth - contentWidth - 12));
+      const top = placement === "right-end"
+        ? Math.max(12, Math.min(rect.bottom - contentHeight, window.innerHeight - contentHeight - 12))
+        : rect.bottom + 8;
 
       setStyle({
         left,
-        top: rect.bottom + 8,
+        top,
         visibility: "visible"
       });
     };
@@ -123,7 +137,7 @@ export function DropdownMenuContent({ className, ...props }: HTMLAttributes<HTML
       window.removeEventListener("resize", closeOnViewportChange);
       window.removeEventListener("scroll", closeOnViewportChange, true);
     };
-  }, [context]);
+  }, [context, placement]);
 
   if (typeof document === "undefined") {
     return null;

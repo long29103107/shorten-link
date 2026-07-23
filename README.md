@@ -358,12 +358,12 @@ Admins with `security.assignments.manage` can also manage role and user identiti
 
 - `GET /api/security/roles`
 - `PUT /api/security/roles/custom`
-- `POST /api/security/roles/custom/{id}/disable`
+- `DELETE /api/security/roles/custom/{id}`
 - `GET /api/security/users`
 - `PUT /api/security/users`
 - `POST /api/security/users/{id}/disable`
 
-System roles are predefined bundles in the library and are returned as enabled, non-deletable role bundles. Custom roles can be created or updated with supported permissions only; unknown permissions are rejected before persistence. Normal users can be created or updated with system and/or custom role ids, enabled state, display name, and password material for creation or password replacement. User responses never return raw passwords or password hashes. The hidden bootstrap admin user is excluded from normal user-management list responses and cannot be updated or disabled through user-management APIs.
+System roles are predefined bundles in the library and are returned as enabled, read-only, non-deletable role bundles. Custom roles can be created or updated with supported permissions only; unknown permissions are rejected before persistence. A custom role can be deleted only after it has been removed or replaced on every assigned user; deleting a role that is still assigned returns `409 role_in_use`. Normal users can be created or updated with system and/or custom role ids, enabled state, display name, and password material for creation or password replacement. User responses never return raw passwords or password hashes. The hidden bootstrap admin user is excluded from normal user-management list responses and cannot be updated or disabled through user-management APIs.
 
 Permissions are the source of truth for authorization checks; roles only expand to permissions. OAuth/OIDC, public signup, password reset, MFA, and multi-tenant organization management are intentionally out of scope.
 

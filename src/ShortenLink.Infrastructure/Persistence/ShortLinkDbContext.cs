@@ -17,6 +17,8 @@ public sealed class ShortLinkDbContext : DbContext
 
     public DbSet<ShortenLinkCustomRoleRecord> SecurityCustomRoles => Set<ShortenLinkCustomRoleRecord>();
 
+    public DbSet<ShortenLinkRolePermissionOverrideRecord> SecurityRolePermissionOverrides => Set<ShortenLinkRolePermissionOverrideRecord>();
+
     public DbSet<ShortenLinkSecurityUserRecord> SecurityUsers => Set<ShortenLinkSecurityUserRecord>();
 
     public DbSet<ShortenLinkUserApiKeyRecord> SecurityUserApiKeys => Set<ShortenLinkUserApiKeyRecord>();
@@ -139,6 +141,25 @@ public sealed class ShortLinkDbContext : DbContext
                 .IsUnique();
             entity.HasIndex(role => role.IsEnabled);
             entity.HasIndex(role => role.CreatedAt);
+        });
+
+        modelBuilder.Entity<ShortenLinkRolePermissionOverrideRecord>(entity =>
+        {
+            entity.ToTable("shorten_link_security_role_permission_overrides");
+            entity.HasKey(item => new { item.RoleId, item.Permission });
+
+            entity.Property(item => item.RoleId)
+                .HasMaxLength(128)
+                .IsRequired();
+
+            entity.Property(item => item.Permission)
+                .HasMaxLength(256)
+                .IsRequired();
+
+            entity.Property(item => item.IsAllowed)
+                .IsRequired();
+
+            entity.HasIndex(item => item.RoleId);
         });
 
         modelBuilder.Entity<ShortenLinkSecurityUserRecord>(entity =>

@@ -17,10 +17,9 @@ import {
 
 type LoginPageProps = {
   onSignedIn: () => void;
-  onBackHome: () => void;
 };
 
-export function LoginPage({ onSignedIn, onBackHome }: LoginPageProps) {
+export function LoginPage({ onSignedIn }: LoginPageProps) {
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("admin");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -96,9 +95,6 @@ export function LoginPage({ onSignedIn, onBackHome }: LoginPageProps) {
         <CardFooter>
           <Button type="submit" disabled={isSubmitting}>
             {isSubmitting ? "Signing in" : "Sign in"}
-          </Button>
-          <Button type="button" variant="secondary" disabled={isSubmitting} onClick={onBackHome}>
-            Return to workspace
           </Button>
         </CardFooter>
       </form>
