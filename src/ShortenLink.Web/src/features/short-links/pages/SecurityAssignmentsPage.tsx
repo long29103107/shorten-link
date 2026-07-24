@@ -30,19 +30,17 @@ type ConfirmAction = {
   onConfirm: () => void;
 };
 
-const systemRoleOptions = ["Owner", "Admin", "Editor", "Viewer"] as const;
+const systemRoleOptions = ["Admin", "User"] as const;
 
 const permissionOptions = [
   "short_links.read",
   "short_links.create",
   "short_links.update",
-  "short_links.activate",
-  "short_links.deactivate",
+  "short_links.status",
   "short_links.delete",
-  "short_links.export",
+  "short_links.import",
   "analytics.read",
-  "audit_logs.read",
-  "security.assignments.manage"
+  "audit_logs.read"
 ] as const;
 
 export function SecurityAssignmentsPage() {
@@ -240,7 +238,7 @@ export function SecurityAssignmentsPage() {
         <CardContent>
           <EmptyState
             title="Security management is unavailable"
-            description="This admin credential does not include the security.assignments.manage permission."
+            description="Only the Admin role can manage security assignments."
           />
         </CardContent>
       </Card>

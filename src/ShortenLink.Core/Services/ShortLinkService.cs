@@ -1,6 +1,5 @@
 using ShortenLink.Core.Domain;
 using ShortenLink.Core.Generation;
-using ShortenLink.Core.Repositories;
 
 namespace ShortenLink.Core.Services;
 
@@ -38,6 +37,19 @@ public sealed class ShortLinkService : IShortLinkService
         CancellationToken cancellationToken = default) =>
         repository.ListRecentPageAsync(Math.Max(skip, 0), Math.Clamp(limit, 1, 500), cancellationToken);
 
+    public Task<IReadOnlyList<ShortLink>> ListAccessibleRecentAsync(
+        int limit,
+        DateTimeOffset? beforeCreatedAt,
+        string? beforeCode,
+        ShortLinkAccessScope accessScope,
+        CancellationToken cancellationToken = default) =>
+        repository.ListAccessibleRecentAsync(
+            Math.Clamp(limit, 1, 500),
+            beforeCreatedAt,
+            beforeCode,
+            accessScope,
+            cancellationToken);
+
     public Task<int> CountAsync(CancellationToken cancellationToken = default) =>
         repository.CountAsync(cancellationToken);
 
@@ -59,6 +71,33 @@ public sealed class ShortLinkService : IShortLinkService
             now,
             now.AddDays(7));
 
+        return repository.ListPageAsync(
+            Math.Max(skip, 0),
+            Math.Clamp(limit, 1, 500),
+            query,
+            cancellationToken);
+    }
+
+    public Task<ShortLinkListPage> ListAccessiblePageAsync(
+        int skip,
+        int limit,
+        string? search,
+        ShortLinkListStatus status,
+        ShortLinkListSortBy sortBy,
+        ShortLinkSortDirection sortDirection,
+        ShortLinkAccessScope accessScope,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(accessScope);
+        var now = timeProvider.GetUtcNow();
+        var query = new ShortLinkListQuery(
+            string.IsNullOrWhiteSpace(search) ? null : search.Trim(),
+            status,
+            sortBy,
+            sortDirection,
+            now,
+            now.AddDays(7),
+            accessScope);
         return repository.ListPageAsync(
             Math.Max(skip, 0),
             Math.Clamp(limit, 1, 500),
@@ -102,7 +141,14 @@ public sealed class ShortLinkService : IShortLinkService
                 "A unique short code could not be generated.");
         }
 
-        var shortLink = new ShortLink(code, originalUrl, now, request.ExpiresAt.Value);
+        var shortLink = new ShortLink(
+            code,
+            originalUrl,
+            now,
+            request.ExpiresAt.Value,
+            createdByUserId: request.CreatedByUserId,
+            createdByDisplayName: request.CreatedByDisplayName,
+            createdByUsername: request.CreatedByUsername);
         await repository.AddAsync(shortLink, cancellationToken).ConfigureAwait(false);
 
         return CreateShortLinkResult.Success(shortLink);
@@ -255,7 +301,10 @@ public sealed class ShortLinkService : IShortLinkService
             originalUrl,
             existing.CreatedAt,
             request.ExpiresAt.Value,
-            existing.IsActive);
+            existing.IsActive,
+            existing.CreatedByUserId,
+            existing.CreatedByDisplayName,
+            existing.CreatedByUsername);
 
         await repository.UpdateAsync(updated, cancellationToken).ConfigureAwait(false);
         await cache.RemoveAsync(updated.Code, cancellationToken).ConfigureAwait(false);

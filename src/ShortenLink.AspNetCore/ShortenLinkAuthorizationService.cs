@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
-using ShortenLink.Core.Repositories;
 using ShortenLink.Core.Security;
 
 namespace ShortenLink.AspNetCore;
@@ -17,16 +16,20 @@ public sealed record ShortenLinkAuthorizationResult(
     bool Succeeded,
     bool IsAuthenticated,
     string? ErrorCode,
-    string? ErrorMessage)
+    string? ErrorMessage,
+    string? UserId,
+    bool IsAdmin)
 {
-    public static ShortenLinkAuthorizationResult Success() =>
-        new(true, true, null, null);
+    public static ShortenLinkAuthorizationResult Success(
+        string? userId = null,
+        bool isAdmin = true) =>
+        new(true, true, null, null, userId, isAdmin);
 
     public static ShortenLinkAuthorizationResult Unauthorized() =>
-        new(false, false, "unauthorized", "A valid admin credential is required.");
+        new(false, false, "unauthorized", "A valid credential is required.", null, false);
 
     public static ShortenLinkAuthorizationResult Forbidden() =>
-        new(false, true, "forbidden", "The admin credential does not include the required permission.");
+        new(false, true, "forbidden", "The credential does not include the required permission.", null, false);
 }
 
 public sealed class ShortenLinkAuthorizationService(
@@ -46,11 +49,6 @@ public sealed class ShortenLinkAuthorizationService(
         ArgumentException.ThrowIfNullOrWhiteSpace(permission);
 
         var security = options.Value.Security;
-        if (!security.Enabled)
-        {
-            return ShortenLinkAuthorizationResult.Success();
-        }
-
         if (HasBearerToken(httpContext))
         {
             var session = await userSessionService
@@ -61,9 +59,21 @@ public sealed class ShortenLinkAuthorizationService(
                 return ShortenLinkAuthorizationResult.Unauthorized();
             }
 
-            return session.Principal.Permissions.Contains(permission, StringComparer.Ordinal)
-                ? ShortenLinkAuthorizationResult.Success()
+            var isAdmin = session.Principal.Roles.Contains(
+                ShortenLinkRoles.Admin,
+                StringComparer.OrdinalIgnoreCase);
+            return (permission == ShortenLinkPermissions.AdminOnly
+                    ? isAdmin
+                    : session.Principal.Permissions.Contains(permission, StringComparer.Ordinal))
+                ? ShortenLinkAuthorizationResult.Success(
+                    session.Principal.UserId,
+                    isAdmin)
                 : ShortenLinkAuthorizationResult.Forbidden();
+        }
+
+        if (!security.Enabled)
+        {
+            return ShortenLinkAuthorizationResult.Success(isAdmin: true);
         }
 
         if (!httpContext.Request.Headers.TryGetValue(security.HeaderName, out var keyValues))
@@ -100,8 +110,15 @@ public sealed class ShortenLinkAuthorizationService(
                 .CreatePrincipalAsync(owner, userApiKey.CreatedAt, cancellationToken)
                 .ConfigureAwait(false);
 
-            return userPrincipal.Permissions.Contains(permission, StringComparer.Ordinal)
-                ? ShortenLinkAuthorizationResult.Success()
+            var isAdmin = userPrincipal.Roles.Contains(
+                ShortenLinkRoles.Admin,
+                StringComparer.OrdinalIgnoreCase);
+            return (permission == ShortenLinkPermissions.AdminOnly
+                    ? isAdmin
+                    : userPrincipal.Permissions.Contains(permission, StringComparer.Ordinal))
+                ? ShortenLinkAuthorizationResult.Success(
+                    userPrincipal.UserId,
+                    isAdmin)
                 : ShortenLinkAuthorizationResult.Forbidden();
         }
 
@@ -119,9 +136,15 @@ public sealed class ShortenLinkAuthorizationService(
                 persistedAssignment.Roles,
                 persistedAssignment.Permissions,
                 cancellationToken).ConfigureAwait(false);
+            var isAdmin = persistedAssignment.Roles.Contains(
+                ShortenLinkRoles.Admin,
+                StringComparer.OrdinalIgnoreCase);
 
-            return persistedPermissions.Contains(permission)
-                ? ShortenLinkAuthorizationResult.Success()
+            return (permission == ShortenLinkPermissions.AdminOnly
+                    ? isAdmin
+                    : persistedPermissions.Contains(permission))
+                ? ShortenLinkAuthorizationResult.Success(
+                    isAdmin: isAdmin)
                 : ShortenLinkAuthorizationResult.Forbidden();
         }
 
@@ -137,8 +160,14 @@ public sealed class ShortenLinkAuthorizationService(
             principal.Roles,
             principal.Permissions,
             cancellationToken).ConfigureAwait(false);
-        return permissions.Contains(permission)
-            ? ShortenLinkAuthorizationResult.Success()
+        var configuredIsAdmin = principal.Roles.Contains(
+            ShortenLinkRoles.Admin,
+            StringComparer.OrdinalIgnoreCase);
+        return (permission == ShortenLinkPermissions.AdminOnly
+                ? configuredIsAdmin
+                : permissions.Contains(permission))
+            ? ShortenLinkAuthorizationResult.Success(
+                isAdmin: configuredIsAdmin)
             : ShortenLinkAuthorizationResult.Forbidden();
     }
 

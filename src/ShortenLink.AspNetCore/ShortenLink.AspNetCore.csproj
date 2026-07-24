@@ -16,7 +16,7 @@
     <IsPackable>true</IsPackable>
     <PackageId>ShortenLink.AspNetCore</PackageId>
     <Title>ShortenLink ASP.NET Core</Title>
-    <Description>ASP.NET Core dependency injection, options, rate limiting, and endpoint mapping integration for Shorten Link hosts.</Description>
+    <Description>ASP.NET Core dependency injection, options, authorization, rate limiting, and runtime integration for Shorten Link hosts.</Description>
     <Authors>ShortenLink Contributors</Authors>
     <PackageTags>short-link;url-shortener;aspnetcore;dotnet;nuget;minimal-api</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

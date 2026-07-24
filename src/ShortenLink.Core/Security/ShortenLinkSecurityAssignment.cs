@@ -2,7 +2,7 @@ using ShortenLink.Core.Domain;
 
 namespace ShortenLink.Core.Security;
 
-public sealed class ShortenLinkSecurityAssignmentEntity : BaseEntity
+public sealed class ShortenLinkSecurityAssignmentEntity : BaseEntity<Guid>
 {
     public ShortenLinkSecurityAssignmentEntity(
         string credentialKeyHash,
@@ -10,8 +10,9 @@ public sealed class ShortenLinkSecurityAssignmentEntity : BaseEntity
         IReadOnlyList<string> roles,
         IReadOnlyList<string> permissions,
         bool isEnabled,
-        DateTimeOffset createdAt)
-        : base(createdAt)
+        DateTimeOffset createdAt,
+        Guid? technicalId = null)
+        : base(createdAt, technicalId ?? Guid.CreateVersion7())
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(credentialKeyHash);
 

@@ -12,7 +12,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ShortenLink.Core.Generation;
-using ShortenLink.Core.Repositories;
 using ShortenLink.Core.Services;
 using ShortenLink.Infrastructure.Persistence;
 using ShortenLink.Infrastructure.Repositories;
@@ -89,6 +88,7 @@ public static class ShortenLinkServiceCollectionExtensions
         services.TryAddSingleton<IShortCodeGenerator, Base62ShortCodeGenerator>();
         services.TryAddScoped<IShortLinkRepository, EfCoreShortLinkRepository>();
         services.TryAddScoped<IShortLinkClickRepository, EfCoreShortLinkClickRepository>();
+        services.TryAddScoped<IShortLinkShareRepository, EfCoreShortLinkShareRepository>();
         services.TryAddScoped<IShortenLinkSecurityAssignmentRepository, EfCoreShortenLinkSecurityAssignmentRepository>();
         services.TryAddScoped<IShortenLinkSecurityRoleRepository, EfCoreShortenLinkSecurityRoleRepository>();
         services.TryAddScoped<IShortenLinkSecurityUserRepository, EfCoreShortenLinkSecurityUserRepository>();

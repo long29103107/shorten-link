@@ -30,17 +30,19 @@ import type {
   ShortLinkAdminPageResult,
   ShortLinkDiscoveryQuery,
   ShortLinkDetails,
+  ShortLinkShare,
+  ShortLinkSharesList,
   UpdateShortLinkRequest
 } from "../types";
 
 export async function loginSecurityUser(
-  username: string,
+  email: string,
   password: string
 ): Promise<SecurityLoginResponse> {
   return fetchJson<SecurityLoginResponse>("/api/security/login", {
     method: "POST",
     suppressAuthRedirect: true,
-    body: JSON.stringify({ username, password })
+    body: JSON.stringify({ email, password })
   });
 }
 
@@ -166,6 +168,33 @@ export async function upsertCustomSecurityRole(
 export async function deleteCustomSecurityRole(id: string): Promise<SecurityRoleDeleted> {
   return fetchJson<SecurityRoleDeleted>(
     `/api/security/roles/custom/${encodeURIComponent(id)}`,
+    { method: "DELETE" }
+  );
+}
+
+export async function listShortLinkShares(code: string): Promise<ShortLinkSharesList> {
+  return fetchJson<ShortLinkSharesList>(
+    `/api/short-links/${encodeURIComponent(code)}/shares`
+  );
+}
+
+export async function upsertShortLinkShare(
+  code: string,
+  username: string,
+  access: "View" | "Edit"
+): Promise<ShortLinkShare> {
+  return fetchJson<ShortLinkShare>(
+    `/api/short-links/${encodeURIComponent(code)}/shares`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ username, access })
+    }
+  );
+}
+
+export async function deleteShortLinkShare(code: string, userId: string): Promise<void> {
+  await fetchJson<void>(
+    `/api/short-links/${encodeURIComponent(code)}/shares/${encodeURIComponent(userId)}`,
     { method: "DELETE" }
   );
 }

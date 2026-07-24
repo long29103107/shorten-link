@@ -48,6 +48,23 @@ export type ShortLinkAdminItem = {
   createdAtUtc: string;
   expiredAtUtc: string | null;
   isActive: boolean;
+  createdByUserId: string | null;
+  createdByDisplayName: string | null;
+  createdByUsername: string | null;
+  accessLevel: "Admin" | "Owner" | "Edit" | "View" | "None" | null;
+};
+
+export type ShortLinkShare = {
+  userId: string;
+  username: string | null;
+  displayName: string | null;
+  access: "View" | "Edit";
+  createdByUserId: string;
+  createdAtUtc: string;
+};
+
+export type ShortLinkSharesList = {
+  items: ShortLinkShare[];
 };
 
 export type ShortLinkAdminPageResult = {

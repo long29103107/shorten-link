@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using ShortenLink.Core.Repositories;
 using ShortenLink.Core.Security;
 using ShortenLink.Infrastructure.Persistence;
 
@@ -41,7 +40,7 @@ public sealed class EfCoreShortenLinkUserApiKeyRepository : IShortenLinkUserApiK
 
         var record = await dbContext.SecurityUserApiKeys
             .AsNoTracking()
-            .FirstOrDefaultAsync(apiKey => apiKey.Id == id, cancellationToken)
+            .FirstOrDefaultAsync(apiKey => apiKey.ApiKeyId == id, cancellationToken)
             .ConfigureAwait(false);
 
         return record?.ToDomain();
@@ -68,12 +67,12 @@ public sealed class EfCoreShortenLinkUserApiKeyRepository : IShortenLinkUserApiK
         ArgumentNullException.ThrowIfNull(apiKey);
 
         var record = await dbContext.SecurityUserApiKeys
-            .FirstOrDefaultAsync(candidate => candidate.Id == apiKey.ApiKeyKey, cancellationToken)
+            .FirstOrDefaultAsync(candidate => candidate.ApiKeyId == apiKey.ApiKeyKey, cancellationToken)
             .ConfigureAwait(false);
 
         if (record is null)
         {
-            dbContext.SecurityUserApiKeys.Add(ShortenLinkUserApiKeyRecord.FromDomain(apiKey));
+            dbContext.SecurityUserApiKeys.Add(ShortenLinkUserApiKeyPersistenceEntity.FromDomain(apiKey));
         }
         else
         {
@@ -90,7 +89,7 @@ public sealed class EfCoreShortenLinkUserApiKeyRepository : IShortenLinkUserApiK
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
 
         var record = await dbContext.SecurityUserApiKeys
-            .FirstOrDefaultAsync(apiKey => apiKey.Id == id, cancellationToken)
+            .FirstOrDefaultAsync(apiKey => apiKey.ApiKeyId == id, cancellationToken)
             .ConfigureAwait(false);
         if (record is null)
         {

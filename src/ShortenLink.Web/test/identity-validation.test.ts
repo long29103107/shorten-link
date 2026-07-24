@@ -12,8 +12,8 @@ import {
 
 describe("identity form validation", () => {
   test("maps required login values to exact controls", () => {
-    expect(validateLoginForm({ username: " ", password: "" })).toEqual({
-      username: "Enter your username.",
+    expect(validateLoginForm({ email: " ", password: "" })).toEqual({
+      email: "Enter your email.",
       password: "Enter your password."
     });
   });
@@ -27,7 +27,7 @@ describe("identity form validation", () => {
   });
 
   test("maps known login and managed-user API fields without unknown fields", () => {
-    expect(mapLoginApiFieldErrors({ username: "Required", other: "Fallback" })).toEqual({ username: "Required" });
+    expect(mapLoginApiFieldErrors({ email: "Required", other: "Fallback" })).toEqual({ email: "Required" });
     expect(mapManagedUserApiFieldErrors({ username: "Duplicate", displayName: "Required", other: "Fallback" })).toEqual({
       displayName: "Required",
       email: "Duplicate"

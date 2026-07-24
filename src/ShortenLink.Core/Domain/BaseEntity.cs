@@ -1,22 +1,35 @@
 namespace ShortenLink.Core.Domain;
 
-public abstract class BaseEntity
+public abstract class BaseEntity<TKey>
+    where TKey : notnull
 {
+    protected BaseEntity()
+        : this(DateTimeOffset.UtcNow)
+    {
+    }
+
     protected BaseEntity(
         DateTimeOffset createdAt,
-        Guid? id = null,
+        TKey? id = default,
         Guid? createdBy = null,
         Guid? updatedBy = null,
         DateTimeOffset? updatedAt = null)
     {
-        Id = id ?? Guid.CreateVersion7();
+        if (typeof(TKey) != typeof(Guid))
+        {
+            throw new NotSupportedException($"{nameof(BaseEntity<TKey>)} currently supports Guid keys only.");
+        }
+
+        Id = EqualityComparer<TKey>.Default.Equals(id!, default!)
+            ? (TKey)(object)Guid.CreateVersion7()
+            : id!;
         CreatedBy = createdBy;
         CreatedAt = createdAt;
         UpdatedBy = updatedBy;
         UpdatedAt = updatedAt;
     }
 
-    public Guid Id { get; protected set; }
+    public TKey Id { get; protected set; }
 
     public Guid? CreatedBy { get; protected set; }
 

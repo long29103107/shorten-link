@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http.HttpResults;
+using ShortenLink.AspNetCore;
 using ShortenLink.Core.Services;
 
 namespace ShortenLink.Api.Endpoints;
@@ -16,11 +17,25 @@ internal static class MockDataEndpoints
         return endpoints;
     }
 
-    private static async Task<Ok<MockSeedShortLinksResponse>> SeedShortLinksAsync(
+    private static async Task<IResult> SeedShortLinksAsync(
         IShortLinkService shortLinkService,
+        IShortenLinkUserSessionService userSessionService,
+        HttpContext httpContext,
         int? count,
         CancellationToken cancellationToken)
     {
+        var session = await userSessionService
+            .GetCurrentUserAsync(httpContext, cancellationToken)
+            .ConfigureAwait(false);
+        if (session.Principal is not null
+            && !session.Principal.Permissions.Contains(
+            ShortenLinkPermissions.ShortLinksCreate,
+            StringComparer.Ordinal))
+        {
+            return TypedResults.Forbid();
+        }
+
+        var creator = session.Principal;
         var requestedCount = Math.Clamp(count ?? 200, 1, 500);
         var createdCodes = new List<string>(requestedCount);
         var failedCount = 0;
@@ -28,7 +43,12 @@ internal static class MockDataEndpoints
         for (var index = 1; index <= requestedCount; index++)
         {
             var result = await shortLinkService.CreateAsync(
-                new CreateShortLinkRequest(CreateMockUrl(index), DateTimeOffset.UtcNow.AddDays(30)),
+                new CreateShortLinkRequest(
+                    CreateMockUrl(index),
+                    DateTimeOffset.UtcNow.AddDays(30),
+                    creator?.UserId,
+                    creator?.DisplayName,
+                    creator?.Username),
                 cancellationToken).ConfigureAwait(false);
 
             if (result.Succeeded && result.ShortLink is not null)
@@ -62,10 +82,4 @@ internal static class MockDataEndpoints
         var domain = domains[(normalizedIndex - 1) % domains.Length];
         return $"{domain}/mock/short-link/{normalizedIndex:000}?source=seed";
     }
-
-    private sealed record MockSeedShortLinksResponse(
-        int RequestedCount,
-        int CreatedCount,
-        int FailedCount,
-        IReadOnlyList<string> Codes);
 }

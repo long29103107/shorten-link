@@ -1,6 +1,6 @@
 namespace ShortenLink.AspNetCore;
 
-internal static class ShortenLinkRateLimitingPolicyNames
+public static class ShortenLinkRateLimitingPolicyNames
 {
     public const string Create = "shorten-link-create";
 

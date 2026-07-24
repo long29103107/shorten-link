@@ -44,7 +44,6 @@ export function App() {
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState(() => getStoredCurrentUser());
   const adminPermissions = getAdminPermissionState();
-  const hasAdminRole = currentUser?.roles.some((role) => role.toLowerCase() === "admin") ?? false;
 
   useEffect(() => {
     const handleAuthChanged = () => {
@@ -93,6 +92,16 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!hasAdminEditChanges) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasAdminEditChanges]);
+
+  useEffect(() => {
     const handlePopState = () => {
       const nextPath = window.location.pathname;
       if (!getStoredSessionToken() && nextPath !== "/login") {
@@ -100,11 +109,18 @@ export function App() {
         setRoute({ kind: "login" });
         return;
       }
-      if (route.kind === "admin" && hasAdminEditChanges && nextPath !== "/short-links") {
-        window.history.pushState({}, "", "/short-links");
+      const currentPath = route.kind === "admin"
+        ? "/short-links"
+        : route.kind === "security"
+          ? `/admin/security/${route.section}`
+          : route.kind === "dashboard"
+            ? "/admin/dashboard"
+            : window.location.pathname;
+      if (hasAdminEditChanges && nextPath !== currentPath) {
+        window.history.pushState({}, "", currentPath);
         setPendingNavigationPath(nextPath);
         startTransition(() => {
-          setRoute(parseRoute("/short-links"));
+          setRoute(parseRoute(currentPath));
         });
         return;
       }
@@ -116,7 +132,7 @@ export function App() {
 
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, [hasAdminEditChanges, route.kind]);
+  }, [hasAdminEditChanges, route]);
 
   const commitNavigation = (requestedPath: string) => {
     const path = !getStoredSessionToken() && requestedPath !== "/login"
@@ -132,7 +148,7 @@ export function App() {
   };
 
   const navigate = (path: string) => {
-    if (route.kind === "admin" && hasAdminEditChanges && path !== "/short-links") {
+    if (hasAdminEditChanges && path !== window.location.pathname) {
       setPendingNavigationPath(path);
       return;
     }
@@ -190,7 +206,7 @@ export function App() {
           />
         ) : (
           <LoginPage
-            onSignedIn={() => navigate("/admin/security/users")}
+            onSignedIn={() => navigate("/short-links")}
           />
         )}
         <ConfirmDialog
@@ -198,6 +214,7 @@ export function App() {
           title="Discard form changes?"
           description="You have unsaved changes in the admin form. Leave this page and discard them?"
           confirmLabel="Discard changes"
+          cancelLabel="Stay"
           variant="destructive"
           onConfirm={confirmDiscardAndNavigate}
           onCancel={() => setPendingNavigationPath(null)}
@@ -293,6 +310,16 @@ export function App() {
                     <DropdownMenuItem onClick={() => navigate("/")}>
                       Back to home
                     </DropdownMenuItem>
+                    {route.kind === "dashboard" || route.kind === "security" ? (
+                      <DropdownMenuItem onClick={() => navigate("/short-links")}>
+                        Manage short links
+                      </DropdownMenuItem>
+                    ) : null}
+                    {route.kind === "admin" && adminPermissions.canManageSecurityAssignments ? (
+                      <DropdownMenuItem onClick={() => navigate("/admin/dashboard")}>
+                        Admin management
+                      </DropdownMenuItem>
+                    ) : null}
                     <DropdownMenuItem
                       className="account-sign-out"
                       onClick={() => {
@@ -347,7 +374,7 @@ export function App() {
                   <DropdownMenuItem onClick={() => navigate("/short-links")}>
                     Short links management
                   </DropdownMenuItem>
-                  {hasAdminRole ? (
+                  {adminPermissions.canManageSecurityAssignments ? (
                     <DropdownMenuItem onClick={() => navigate("/admin/dashboard")}>
                       Admin management
                     </DropdownMenuItem>
@@ -394,7 +421,7 @@ export function App() {
         ) : null}
 
         {route.kind === "security" ? (
-          <SecurityManagementPage section={route.section} />
+          <SecurityManagementPage section={route.section} onDirtyChange={setHasAdminEditChanges} />
         ) : null}
 
         {route.kind === "detail" ? (
@@ -411,6 +438,7 @@ export function App() {
         title="Discard form changes?"
         description="You have unsaved changes in the admin form. Leave this page and discard them?"
         confirmLabel="Discard changes"
+        cancelLabel="Stay"
         variant="destructive"
         onConfirm={confirmDiscardAndNavigate}
         onCancel={() => setPendingNavigationPath(null)}

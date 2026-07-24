@@ -2,7 +2,7 @@
 
 ## 1. Product Vision
 
-Build a reusable .NET short-link library that can be packed as NuGet and embedded into other ASP.NET Core applications, plus a polished demo/admin app that proves the real product workflow: create random short links, manage generated URLs, redirect users, and inspect operational state.
+Build a reusable .NET short-link library that can be packed as NuGet and embedded into other ASP.NET Core applications, plus a polished authenticated workspace/admin app that proves the real product workflow: create random short links, manage personally owned and shared URLs, redirect users, administer identities, and inspect operational state.
 
 The product should not stay as a toy URL shortener. The long-term goal is a clean, configurable platform component with stable DI contracts, pluggable persistence/cache/analytics, production-aware defaults, and an admin experience that feels like a small control panel rather than a loose demo page.
 
@@ -10,7 +10,8 @@ The product should not stay as a toy URL shortener. The long-term goal is a clea
 
 - .NET developers who want to add short-link behavior to an existing service.
 - Backend/API teams that need a DI-configurable short-link module.
-- Internal admins who need to create, update, activate/deactivate, delete, copy, and inspect generated short links.
+- Signed-in users who need a private short-link area and controlled View/Edit sharing with other users.
+- Internal administrators who need unrestricted access to links, identities, permissions, and operational health.
 - Maintainers who need a testable codebase with clear local SQLite defaults and an upgrade path to PostgreSQL/Redis.
 
 ## 3. Product Principles
@@ -21,7 +22,13 @@ The product should not stay as a toy URL shortener. The long-term goal is a clea
 - Thin demo app: the API and React app prove behavior without duplicating core business logic.
 - Safe defaults: SQLite should work locally out of the box; PostgreSQL and Redis are optional production upgrades.
 - Clear contracts: endpoint, model, service, repository, options, and DI APIs should remain stable for consumers.
+- Uniform entity identity: every persisted DbSet entity is flattened directly under `ShortenLink.Core/Domain`, uses the `*Entity` suffix, derives from `BaseEntity<Guid>`, and uses a UUIDv7 surrogate primary key; domain-facing codes, user ids, role ids, credential hashes, and former composite keys remain unique business keys.
 - Admin usability: the admin UI should be compact, operational, and fast to scan.
+- Ownership-first: every short link belongs to its creator; access to another user's link must come from an explicit per-link share.
+- Small global role model: `Admin` and `User` are the only system roles; `View` and `Edit` are per-link access levels, not global roles.
+- Explicit privilege: Admin bypasses ownership/share checks and has full system access; User access remains scoped to owned or shared links.
+- Role-gated administration: identity and role management is an intrinsic Admin capability, not a toggleable application permission.
+- Compact permissions: link lifecycle uses one status permission, export follows read access, import has an explicit mutation permission, and audit/report visibility is available to both system roles.
 - Production-aware: early phases can be simple, but the design must leave room for analytics, auth, cache, background processing, rate limiting, auditability, and CI.
 
 ## 4. Current Core Capabilities
@@ -32,10 +39,19 @@ The product should not stay as a toy URL shortener. The long-term goal is a clea
 - Redirect from `/{code}` to the original destination.
 - Handle unknown, inactive, and expired links with configured fallback behavior.
 - Store links with SQLite by default, with PostgreSQL support by configuration.
-- Expose `AddShortenLink(...)` and `MapShortenLinkEndpoints()` for ASP.NET Core consumers.
+- Build fresh SQLite/PostgreSQL schemas directly from the EF model; legacy runtime table-patching helpers are not part of the current clean-migration contract.
+- Expose `AddShortenLink(...)` for ASP.NET Core consumers while the application host owns explicit endpoint mapping.
 - Package the reusable library surface as NuGet packages.
 - Provide a React admin UI for creating and managing generated short links.
 - Support admin actions: create, edit, activate, deactivate, delete, bulk actions, copy, pagination, required-field validation, and toast feedback.
+- Authenticate users with persisted identities and sessions.
+- Seed a bootstrap `admin` identity assigned to the full-access `Admin` system role for a fresh local database.
+- Attribute every newly created short link to the signed-in creator.
+- Scope normal users to links they own or links explicitly shared with them.
+- Share individual links with another user at `View` or `Edit` access.
+- Allow Admin to bypass ownership and sharing restrictions across the system.
+- Provide separate Short Links and Admin navigation, with Admin entry points visible only to authorized identities.
+- Use email as the sign-in identifier; a fresh database seeds `admin@shortenlink.local` with the Admin role.
 - Provide tests for generator, validation, service behavior, endpoint behavior, and persistence.
 
 ## 5. Product Gaps And Next Opportunities
@@ -44,9 +60,9 @@ These are the most valuable improvements from the current app state.
 
 ### P0 - Must Have Before Real Internal Use
 
-- Admin protection: protect `/admin` with at least admin token, basic auth, or session-based auth.
-- Analytics in admin: show click count, last clicked timestamp, and recent click activity.
-- Search/filter/sort: search by code or destination, filter active/inactive/expired, and sort by created date, expiry, or clicks.
+- Complete authorization hardening for every link mutation and administrative endpoint.
+- Audit ownership, share changes, authentication, and administrative mutations.
+- Analytics in admin: expand click count and recent activity into an operational activity view.
 - Robust server error UX: provide retry actions and avoid repeated duplicate toast spam during outages.
 - Validation parity: keep FE and BE validation rules aligned and map backend field errors to the correct input.
 
@@ -71,11 +87,11 @@ These are the most valuable improvements from the current app state.
 
 ```txt
 src/
-  ShortenLink.Core/              # Domain models, interfaces, validation, core service
-  ShortenLink.Infrastructure/    # EF Core, repositories, SQLite/PostgreSQL providers
-  ShortenLink.AspNetCore/        # DI setup, options, endpoint mapping, middleware helpers
+  ShortenLink.Core/              # Domain, Contracts, centralized Abstractions, validation, core services
+  ShortenLink.Infrastructure/    # EF mapping, repositories, SQLite/PostgreSQL providers
+  ShortenLink.AspNetCore/        # DI setup, options, authorization, middleware helpers
   ShortenLink.Worker/            # Optional analytics/background jobs
-  ShortenLink.Api/               # Demo backend API using the library
+  ShortenLink.Api/               # Backend API host and explicit endpoint groups
   ShortenLink.Web/               # React + Vite frontend
 
 tests/
@@ -192,7 +208,10 @@ Goal: harden the system for real-world service usage.
 
 Scope:
 
-- Add admin authentication/authorization.
+- Harden the existing admin authentication/authorization boundary.
+- Establish the two-role system model: `Admin` for unrestricted administration and `User` for ownership-scoped workspace access.
+- Persist creator ownership and per-link `View`/`Edit` shares.
+- Enforce owner/share/Admin access consistently across list, detail, analytics, update, lifecycle, delete, and sharing endpoints.
 - Implement cache abstraction for redirect lookup.
 - Add in-memory cache and Redis provider.
 - Ensure cache lookup happens before database lookup.
@@ -205,6 +224,10 @@ Scope:
 Success criteria:
 
 - Admin routes are protected.
+- Every created link is attributed to its creator.
+- Users see and operate only on owned links or links shared at a sufficient per-link access level.
+- Admin can operate across all links without an ownership/share grant.
+- `View` and `Edit` remain link access levels and never appear as system roles.
 - Cache miss falls back to database and stores successful lookup.
 - Mutations invalidate cache correctly.
 - Redis can be enabled by config.
@@ -214,6 +237,7 @@ Success criteria:
 ## 8. Non-Goals
 
 - Public SaaS billing or tenant management.
+- Multi-workspace or organization tenancy; each account has one private personal link area.
 - Custom aliases.
 - Public anonymous admin access.
 - Advanced marketing landing pages.
@@ -224,13 +248,18 @@ Success criteria:
 
 The product is considered complete for this vision when:
 
-- The reusable library exposes stable models, services, repositories, options, DI setup, and endpoint mapping.
+- The reusable library exposes stable models, services, repositories, options, and DI setup; the API host owns endpoint presentation.
 - The reusable library is isolated from the demo app and can be packed as NuGet.
 - The demo API proves create, list, detail, update, activate/deactivate, delete, and redirect flows.
 - The React admin proves users can create, validate, copy, edit, activate/deactivate, delete, search, filter, and inspect short links.
 - SQLite works by default.
 - PostgreSQL can be enabled by configuration.
 - Admin routes are protected.
+- The only system roles are `Admin` and `User`.
+- Security administration is Admin-only by role; the shared application catalog contains read, create, update, status, delete, import, analytics, and audit permissions.
+- Export is covered by `short_links.read`; activate/deactivate share `short_links.status`.
+- Link ownership is persisted, and per-link sharing supports `View` and `Edit`.
+- Authorization follows the invariant: Admin has unrestricted access; User manages owned links and accesses other links only through an adequate share.
 - Analytics and cache are implemented as configurable abstractions.
 - Tests cover core logic, endpoint behavior, persistence, and the most important admin workflows.
 - README explains how to run, configure, test, pack, publish, and reuse the library.

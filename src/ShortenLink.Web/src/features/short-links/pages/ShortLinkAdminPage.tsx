@@ -30,6 +30,7 @@ import { Label } from "../../../shared/components/ui/label";
 import { DataTable } from "../../../shared/components/DataTable";
 import { Pagination } from "../../../shared/components/Pagination";
 import { ExpiryQuickPicks } from "../components/ExpiryQuickPicks";
+import { ShortLinkShareDialog } from "../components/ShortLinkShareDialog";
 import {
   defaultShortLinkDiscoveryQuery,
   createShortLinkDiscoveryChange,
@@ -82,6 +83,7 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
     defaultShortLinkDiscoveryQuery
   );
   const [analyticsCode, setAnalyticsCode] = useState<string | null>(null);
+  const [sharingLink, setSharingLink] = useState<ShortLinkAdminItem | null>(null);
   const [analyticsData, setAnalyticsData] = useState<ShortLinkAnalytics | null>(null);
   const [analyticsError, setAnalyticsError] = useState<string | null>(null);
   const [isAnalyticsRetryable, setIsAnalyticsRetryable] = useState(false);
@@ -91,9 +93,15 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
 
   const selectedLinks = links.filter((link) => selectedCodes.has(link.code));
   const selectedCount = selectedCodes.size;
-  const canBulkDeactivate = adminPermissions.canDeactivate && selectedLinks.some((link) => link.isActive);
-  const canBulkActivate = adminPermissions.canActivate && selectedLinks.some((link) => !link.isActive);
-  const canBulkDelete = adminPermissions.canDelete;
+  const canEditLink = (link: ShortLinkAdminItem) =>
+    link.accessLevel === "Admin" || link.accessLevel === "Owner" || link.accessLevel === "Edit";
+  const canManageLink = (link: ShortLinkAdminItem) =>
+    link.accessLevel === "Admin" || link.accessLevel === "Owner";
+  const selectedAreEditable = selectedLinks.length > 0 && selectedLinks.every(canEditLink);
+  const selectedAreManaged = selectedLinks.length > 0 && selectedLinks.every(canManageLink);
+  const canBulkDeactivate = adminPermissions.canDeactivate && selectedAreEditable && selectedLinks.some((link) => link.isActive);
+  const canBulkActivate = adminPermissions.canActivate && selectedAreEditable && selectedLinks.some((link) => !link.isActive);
+  const canBulkDelete = adminPermissions.canDelete && selectedAreManaged;
   const hasBulkActions = canBulkDeactivate || canBulkActivate || canBulkDelete;
   const shouldShowList = !isLoading && links.length > 0;
   const editingLink = editingCode
@@ -359,7 +367,11 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
     try {
       const updated = await updateShortLink(code, payload);
       setLinks((current) =>
-        current.map((link) => (link.code === updated.code ? updated : link))
+        current.map((link) => (
+          link.code === updated.code
+            ? { ...updated, accessLevel: updated.accessLevel ?? link.accessLevel }
+            : link
+        ))
       );
       closeEditor();
       showToast({
@@ -621,9 +633,9 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
 
   const hasRowActions = (link: ShortLinkAdminItem) =>
     adminPermissions.canReadAnalytics
-    || adminPermissions.canUpdate
-    || (link.isActive ? adminPermissions.canDeactivate : adminPermissions.canActivate)
-    || adminPermissions.canDelete;
+    || (canEditLink(link) && adminPermissions.canUpdate)
+    || (canEditLink(link) && (link.isActive ? adminPermissions.canDeactivate : adminPermissions.canActivate))
+    || (canManageLink(link) && adminPermissions.canDelete);
 
   const renderDestination = (link: ShortLinkAdminItem) => (
     <a
@@ -663,14 +675,15 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
           onOpenChange={(open) => setOpenMenuCode(open ? link.code : null)}
           actions={[
             ...(adminPermissions.canReadAnalytics ? [{ id: "analytics", label: "Analytics", onSelect: () => void openAnalyticsPanel(link) }] : []),
-            ...(adminPermissions.canUpdate ? [{ id: "edit", label: "Edit", onSelect: () => startEdit(link) }] : []),
-            ...((link.isActive ? adminPermissions.canDeactivate : adminPermissions.canActivate) ? [{
+            ...(canEditLink(link) && adminPermissions.canUpdate ? [{ id: "edit", label: "Edit", onSelect: () => startEdit(link) }] : []),
+            ...(canManageLink(link) ? [{ id: "share", label: "Share", onSelect: () => setSharingLink(link) }] : []),
+            ...(canEditLink(link) && (link.isActive ? adminPermissions.canDeactivate : adminPermissions.canActivate) ? [{
               id: "status",
               label: busyCode === link.code ? "Updating" : link.isActive ? "Deactivate" : "Activate",
               disabled: busyCode === link.code,
               onSelect: () => requestStatusChange(link)
             }] : []),
-            ...(adminPermissions.canDelete ? [{
+            ...(canManageLink(link) && adminPermissions.canDelete ? [{
               id: "delete",
               label: "Delete",
               destructive: true,
@@ -789,6 +802,17 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
           columns={[
             { id: "code", header: "Code", cell: (link) => <a href={link.shortUrl} target="_blank" rel="noreferrer">{link.code}</a> },
             { id: "destination", header: "Destination", cellProps: { className: "admin-url-cell" }, cell: renderDestination },
+            {
+              id: "createdBy",
+              header: "Created by",
+              cell: (link) => (
+                <div className="creator-cell">
+                  <span>{link.createdByDisplayName ?? link.createdByUsername ?? "Unknown"}</span>
+                  {link.createdByUsername && link.createdByDisplayName ? <small>@{link.createdByUsername}</small> : null}
+                </div>
+              )
+            },
+            { id: "access", header: "Access", cell: (link) => <Badge variant="secondary">{link.accessLevel ?? "Unknown"}</Badge> },
             { id: "created", header: "Created", cell: (link) => formatDateTime(link.createdAtUtc) },
             { id: "expiry", header: "Expiry", cell: (link) => formatDateTime(link.expiredAtUtc) },
             { id: "status", header: "Status", cell: (link) => <Badge variant={link.isActive ? "default" : "destructive"}>{link.isActive ? "Active" : "Inactive"}</Badge> },
@@ -931,6 +955,7 @@ export function ShortLinkAdminPage({ onDirtyChange }: ShortLinkAdminPageProps) {
           </div>
         </div>
       ) : null}
+      <ShortLinkShareDialog link={sharingLink} onClose={() => setSharingLink(null)} />
       {analyticsCode ? (
         <div className="dialog-backdrop" role="presentation">
           <div

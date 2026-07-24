@@ -105,7 +105,7 @@ public sealed class EfCoreShortenLinkSecurityIdentityRepositoryTests
 
         Assert.NotNull(stored);
         Assert.Equal("Editor User", stored.DisplayName);
-        Assert.Equal(new[] { ShortenLinkSystemRoles.Editor, "support" }, stored.RoleIds);
+        Assert.Equal(new[] { "support", ShortenLinkSystemRoles.User }, stored.RoleIds);
         Assert.True(stored.IsEnabled);
         Assert.False(stored.IsHidden);
         Assert.False(stored.IsBootstrap);
@@ -182,13 +182,10 @@ public sealed class EfCoreShortenLinkSecurityIdentityRepositoryTests
     }
 
     [Fact]
-    public async Task SchemaInitializer_CreatesSecurityIdentityTablesWhenDatabaseAlreadyExists()
+    public async Task EnsureCreated_CreatesAllSecurityIdentityTables()
     {
-        await using var database = await SqliteTestDatabase.CreateWithLegacySchemaAsync();
+        await using var database = await SqliteTestDatabase.CreateAsync();
         await using var context = database.CreateContext();
-        await context.Database.EnsureCreatedAsync();
-
-        await context.EnsureSecurityIdentitySchemaAsync();
 
         var tables = await database.GetTableNamesAsync();
 
@@ -209,16 +206,16 @@ public sealed class EfCoreShortenLinkSecurityIdentityRepositoryTests
 
         Assert.Contains(
             "IX_shorten_link_security_users_Username",
-            GetIndexNames<ShortenLinkSecurityUserRecord>(context));
+            GetIndexNames<ShortenLinkSecurityUserPersistenceEntity>(context));
         Assert.Contains(
             "IX_shorten_link_security_user_api_keys_KeyHash",
-            GetIndexNames<ShortenLinkUserApiKeyRecord>(context));
+            GetIndexNames<ShortenLinkUserApiKeyPersistenceEntity>(context));
         Assert.Contains(
             "IX_shorten_link_security_custom_roles_Name",
-            GetIndexNames<ShortenLinkCustomRoleRecord>(context));
+            GetIndexNames<ShortenLinkCustomRolePersistenceEntity>(context));
         Assert.Contains(
             "IX_shorten_link_security_role_permission_overrides_RoleId",
-            GetIndexNames<ShortenLinkRolePermissionOverrideRecord>(context));
+            GetIndexNames<ShortenLinkRolePermissionOverridePersistenceEntity>(context));
     }
 
     private static HashSet<string> GetIndexNames<TRecord>(ShortLinkDbContext context)

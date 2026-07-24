@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using ShortenLink.Core.Repositories;
 using ShortenLink.Core.Security;
 using ShortenLink.Infrastructure.Persistence;
 
@@ -8,7 +7,7 @@ namespace ShortenLink.Infrastructure.Repositories;
 public sealed class EfCoreShortenLinkSecurityUserRepository : IShortenLinkSecurityUserRepository
 {
     public const string BootstrapAdminUserId = "bootstrap-admin";
-    public const string BootstrapAdminUsername = "admin";
+    public const string BootstrapAdminUsername = "admin@shortenlink.local";
 
     private readonly ShortLinkDbContext dbContext;
 
@@ -33,7 +32,7 @@ public sealed class EfCoreShortenLinkSecurityUserRepository : IShortenLinkSecuri
 
         return records
             .OrderBy(user => user.Username, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(user => user.Id, StringComparer.Ordinal)
+            .ThenBy(user => user.UserId, StringComparer.Ordinal)
             .Select(user => user.ToDomain())
             .ToList();
     }
@@ -46,7 +45,7 @@ public sealed class EfCoreShortenLinkSecurityUserRepository : IShortenLinkSecuri
 
         var record = await dbContext.SecurityUsers
             .AsNoTracking()
-            .FirstOrDefaultAsync(user => user.Id == id, cancellationToken)
+            .FirstOrDefaultAsync(user => user.UserId == id, cancellationToken)
             .ConfigureAwait(false);
 
         return record?.ToDomain();
@@ -74,12 +73,12 @@ public sealed class EfCoreShortenLinkSecurityUserRepository : IShortenLinkSecuri
         ArgumentNullException.ThrowIfNull(user);
 
         var record = await dbContext.SecurityUsers
-            .FirstOrDefaultAsync(candidate => candidate.Id == user.UserKey, cancellationToken)
+            .FirstOrDefaultAsync(candidate => candidate.UserId == user.UserKey, cancellationToken)
             .ConfigureAwait(false);
 
         if (record is null)
         {
-            dbContext.SecurityUsers.Add(ShortenLinkSecurityUserRecord.FromDomain(user));
+            dbContext.SecurityUsers.Add(ShortenLinkSecurityUserPersistenceEntity.FromDomain(user));
         }
         else
         {
@@ -97,7 +96,9 @@ public sealed class EfCoreShortenLinkSecurityUserRepository : IShortenLinkSecuri
         ArgumentException.ThrowIfNullOrWhiteSpace(passwordHash);
 
         var existing = await dbContext.SecurityUsers
-            .FirstOrDefaultAsync(user => user.Username == BootstrapAdminUsername, cancellationToken)
+            .FirstOrDefaultAsync(
+                user => user.UserId == BootstrapAdminUserId || user.IsBootstrap,
+                cancellationToken)
             .ConfigureAwait(false);
 
         if (existing is null)
@@ -113,12 +114,13 @@ public sealed class EfCoreShortenLinkSecurityUserRepository : IShortenLinkSecuri
                 isBootstrap: true,
                 createdAt);
 
-            dbContext.SecurityUsers.Add(ShortenLinkSecurityUserRecord.FromDomain(user));
+            dbContext.SecurityUsers.Add(ShortenLinkSecurityUserPersistenceEntity.FromDomain(user));
             await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
             return user;
         }
 
         existing.PasswordHash = passwordHash;
+        existing.Username = BootstrapAdminUsername;
         existing.DisplayName = string.IsNullOrWhiteSpace(existing.DisplayName)
             ? "Bootstrap Admin"
             : existing.DisplayName;
@@ -138,7 +140,7 @@ public sealed class EfCoreShortenLinkSecurityUserRepository : IShortenLinkSecuri
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
 
         var record = await dbContext.SecurityUsers
-            .FirstOrDefaultAsync(user => user.Id == id, cancellationToken)
+            .FirstOrDefaultAsync(user => user.UserId == id, cancellationToken)
             .ConfigureAwait(false);
         if (record is null || record.IsBootstrap)
         {

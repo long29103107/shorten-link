@@ -2,7 +2,7 @@ using ShortenLink.Core.Domain;
 
 namespace ShortenLink.Core.Security;
 
-public sealed class ShortenLinkUserApiKeyEntity : BaseEntity
+public sealed class ShortenLinkUserApiKeyEntity : BaseEntity<Guid>
 {
     public ShortenLinkUserApiKeyEntity(
         string id,
@@ -10,8 +10,9 @@ public sealed class ShortenLinkUserApiKeyEntity : BaseEntity
         string displayName,
         string keyHash,
         bool isEnabled,
-        DateTimeOffset createdAt)
-        : base(createdAt)
+        DateTimeOffset createdAt,
+        Guid? technicalId = null)
+        : base(createdAt, technicalId ?? Guid.CreateVersion7())
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);

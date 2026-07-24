@@ -337,11 +337,12 @@ public sealed class ShortLinkEndpointsTests
     [Fact]
     public void SecurityRoles_ArePermissionBundles()
     {
-        var viewerPermissions = ShortenLinkRoles.PermissionBundles[ShortenLinkRoles.Viewer];
+        var viewerPermissions = ShortenLinkRoles.PermissionBundles[ShortenLinkRoles.User];
 
         Assert.Contains(ShortenLinkPermissions.ShortLinksRead, viewerPermissions);
         Assert.Contains(ShortenLinkPermissions.AnalyticsRead, viewerPermissions);
-        Assert.DoesNotContain(ShortenLinkPermissions.ShortLinksDelete, viewerPermissions);
+        Assert.Contains(ShortenLinkPermissions.ShortLinksDelete, viewerPermissions);
+        Assert.Contains(ShortenLinkPermissions.AuditLogsRead, viewerPermissions);
     }
 
     [Fact]
@@ -354,7 +355,7 @@ public sealed class ShortLinkEndpointsTests
 
         using var loginResponse = await client.PostAsJsonAsync("/api/security/login", new
         {
-            username = "admin",
+            email = "admin@shortenlink.local",
             password = "admin"
         });
         var loginJson = await loginResponse.Content.ReadAsStringAsync();
@@ -365,9 +366,9 @@ public sealed class ShortLinkEndpointsTests
         Assert.Equal(HttpStatusCode.OK, loginResponse.StatusCode);
         Assert.NotNull(loginPayload);
         Assert.False(string.IsNullOrWhiteSpace(loginPayload.Token));
-        Assert.Equal("admin", loginPayload.User.Username);
+        Assert.Equal("admin@shortenlink.local", loginPayload.User.Username);
         Assert.Contains(ShortenLinkRoles.Admin, loginPayload.User.Roles);
-        Assert.Contains(ShortenLinkPermissions.SecurityAssignmentsManage, loginPayload.User.Permissions);
+        Assert.Contains(ShortenLinkPermissions.AuditLogsRead, loginPayload.User.Permissions);
         Assert.DoesNotContain("PasswordHash", loginJson, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("admin:", loginJson, StringComparison.OrdinalIgnoreCase);
 
@@ -382,7 +383,7 @@ public sealed class ShortLinkEndpointsTests
         Assert.Equal(HttpStatusCode.OK, listResponse.StatusCode);
         Assert.Equal(HttpStatusCode.OK, meResponse.StatusCode);
         Assert.NotNull(mePayload);
-        Assert.Equal("admin", mePayload.Username);
+        Assert.Equal("admin@shortenlink.local", mePayload.Username);
         Assert.Contains(ShortenLinkPermissions.ShortLinksRead, mePayload.Permissions);
     }
 
@@ -396,7 +397,7 @@ public sealed class ShortLinkEndpointsTests
 
         using var loginResponse = await client.PostAsJsonAsync("/api/security/login", new
         {
-            username = "admin",
+            email = "admin@shortenlink.local",
             password = "admin"
         });
         var login = await loginResponse.Content.ReadFromJsonAsync<SecurityLoginResponse>();
@@ -422,7 +423,7 @@ public sealed class ShortLinkEndpointsTests
         Assert.NotNull(refreshed);
         Assert.NotEqual(login.AccessToken, refreshed.AccessToken);
         Assert.NotEqual(login.RefreshToken, refreshed.RefreshToken);
-        Assert.Equal("admin", refreshed.User.Username);
+        Assert.Equal("admin@shortenlink.local", refreshed.User.Username);
     }
 
     [Fact]
@@ -441,7 +442,7 @@ public sealed class ShortLinkEndpointsTests
         var unknownPayload = await unknownResponse.Content.ReadFromJsonAsync<ShortLinkErrorResponse>();
         using var badPasswordResponse = await client.PostAsJsonAsync("/api/security/login", new
         {
-            username = "admin",
+            email = "admin@shortenlink.local",
             password = "wrong"
         });
         var badPasswordPayload = await badPasswordResponse.Content.ReadFromJsonAsync<ShortLinkErrorResponse>();
@@ -478,10 +479,10 @@ public sealed class ShortLinkEndpointsTests
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         Assert.NotNull(payload);
         Assert.Equal("invalid_login", payload.ErrorCode);
-        Assert.Equal("Username or password is invalid.", payload.Message);
+        Assert.Equal("Email or password is invalid.", payload.Message);
         Assert.NotNull(payload.FieldErrors);
         Assert.Equal(2, payload.FieldErrors.Count);
-        Assert.Contains("username", payload.FieldErrors.Keys);
+        Assert.Contains("email", payload.FieldErrors.Keys);
         Assert.Contains("password", payload.FieldErrors.Keys);
         Assert.DoesNotContain("admin", responseJson, StringComparison.OrdinalIgnoreCase);
     }
@@ -538,7 +539,7 @@ public sealed class ShortLinkEndpointsTests
         Assert.Equal(HttpStatusCode.OK, loginResponse.StatusCode);
         Assert.NotNull(loginPayload);
         Assert.Contains(ShortenLinkPermissions.ShortLinksRead, loginPayload.User.Permissions);
-        Assert.DoesNotContain(ShortenLinkPermissions.ShortLinksDelete, loginPayload.User.Permissions);
+        Assert.Contains(ShortenLinkPermissions.ShortLinksDelete, loginPayload.User.Permissions);
 
         client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
             "Bearer",
@@ -549,9 +550,9 @@ public sealed class ShortLinkEndpointsTests
         var deletePayload = await deleteResponse.Content.ReadFromJsonAsync<ShortLinkErrorResponse>();
 
         Assert.Equal(HttpStatusCode.OK, readResponse.StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, deleteResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, deleteResponse.StatusCode);
         Assert.NotNull(deletePayload);
-        Assert.Equal("forbidden", deletePayload.ErrorCode);
+        Assert.Equal("not_found", deletePayload.ErrorCode);
     }
 
     [Fact]
@@ -573,7 +574,7 @@ public sealed class ShortLinkEndpointsTests
         Assert.True(ownerRole.IsSystem);
         Assert.True(ownerRole.IsEnabled);
         Assert.False(ownerRole.CanDelete);
-        Assert.Contains(ShortenLinkPermissions.SecurityAssignmentsManage, ownerRole.Permissions);
+        Assert.Contains(ShortenLinkPermissions.ShortLinksImport, ownerRole.Permissions);
 
         using var upsertResponse = await client.PutAsJsonAsync("/api/security/roles/custom", new
         {
@@ -653,7 +654,7 @@ public sealed class ShortLinkEndpointsTests
                 overrides = new[]
                 {
                     new { permission = ShortenLinkPermissions.ShortLinksRead, isAllowed = false },
-                    new { permission = ShortenLinkPermissions.ShortLinksDelete, isAllowed = true }
+                    new { permission = ShortenLinkPermissions.ShortLinksDelete, isAllowed = false }
                 }
             });
         var overriddenRole = await overrideResponse.Content.ReadFromJsonAsync<SecurityRoleResponse>();
@@ -661,13 +662,13 @@ public sealed class ShortLinkEndpointsTests
         Assert.Equal(HttpStatusCode.OK, overrideResponse.StatusCode);
         Assert.NotNull(overriddenRole);
         Assert.Contains(ShortenLinkPermissions.ShortLinksRead, overriddenRole.DefaultPermissions);
-        Assert.DoesNotContain(ShortenLinkPermissions.ShortLinksDelete, overriddenRole.DefaultPermissions);
+        Assert.Contains(ShortenLinkPermissions.ShortLinksDelete, overriddenRole.DefaultPermissions);
         Assert.DoesNotContain(ShortenLinkPermissions.ShortLinksRead, overriddenRole.Permissions);
-        Assert.Contains(ShortenLinkPermissions.ShortLinksDelete, overriddenRole.Permissions);
+        Assert.DoesNotContain(ShortenLinkPermissions.ShortLinksDelete, overriddenRole.Permissions);
         Assert.Contains(overriddenRole.PermissionOverrides, item =>
             item.Permission == ShortenLinkPermissions.ShortLinksRead && !item.IsAllowed);
         Assert.Contains(overriddenRole.PermissionOverrides, item =>
-            item.Permission == ShortenLinkPermissions.ShortLinksDelete && item.IsAllowed);
+            item.Permission == ShortenLinkPermissions.ShortLinksDelete && !item.IsAllowed);
 
         using var userResponse = await client.PutAsJsonAsync("/api/security/users", new
         {
@@ -691,7 +692,7 @@ public sealed class ShortLinkEndpointsTests
         Assert.Equal(HttpStatusCode.OK, loginResponse.StatusCode);
         Assert.NotNull(login);
         Assert.DoesNotContain(ShortenLinkPermissions.ShortLinksRead, login.User.Permissions);
-        Assert.Contains(ShortenLinkPermissions.ShortLinksDelete, login.User.Permissions);
+        Assert.DoesNotContain(ShortenLinkPermissions.ShortLinksDelete, login.User.Permissions);
     }
 
     [Fact]
@@ -782,7 +783,7 @@ public sealed class ShortLinkEndpointsTests
         Assert.Equal(HttpStatusCode.OK, createResponse.StatusCode);
         Assert.NotNull(created);
         Assert.Equal("editor", created.Username);
-        Assert.Equal(new[] { ShortenLinkRoles.Editor, "support" }, created.RoleIds);
+        Assert.Equal(new[] { "support", ShortenLinkRoles.User }, created.RoleIds);
         Assert.DoesNotContain("password", createJson, StringComparison.OrdinalIgnoreCase);
 
         using var listResponse = await client.GetAsync("/api/security/users");
@@ -960,6 +961,93 @@ public sealed class ShortLinkEndpointsTests
     }
 
     [Fact]
+    public async Task ShortLinks_ArePrivateUntilExplicitlySharedAndRevocationRestoresIsolation()
+    {
+        await using var factory = new ShortLinkApiFactory(
+            enableFrontendFallback: false,
+            securityEnabled: false);
+        await factory.UpsertSecurityUserAsync(
+            "owner-user", "owner", "Owner User", "owner-password",
+            new[] { ShortenLinkRoles.User }, isEnabled: true);
+        await factory.UpsertSecurityUserAsync(
+            "shared-user", "shared", "Shared User", "shared-password",
+            new[] { ShortenLinkRoles.User }, isEnabled: true);
+
+        using var ownerClient = factory.CreateClient();
+        using var ownerLoginResponse = await ownerClient.PostAsJsonAsync("/api/security/login", new
+        {
+            username = "owner",
+            password = "owner-password"
+        });
+        var ownerLogin = await ownerLoginResponse.Content.ReadFromJsonAsync<SecurityLoginResponse>();
+        Assert.NotNull(ownerLogin);
+        ownerClient.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", ownerLogin.Token);
+        var created = await CreateShortLinkAsync(ownerClient, "https://example.com/private");
+
+        using var sharedClient = factory.CreateClient();
+        using var sharedLoginResponse = await sharedClient.PostAsJsonAsync("/api/security/login", new
+        {
+            username = "shared",
+            password = "shared-password"
+        });
+        var sharedLogin = await sharedLoginResponse.Content.ReadFromJsonAsync<SecurityLoginResponse>();
+        Assert.NotNull(sharedLogin);
+        sharedClient.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", sharedLogin.Token);
+
+        using var privateListResponse = await sharedClient.GetAsync("/api/short-links?page=1&limit=10");
+        var privateList = await privateListResponse.Content.ReadFromJsonAsync<ShortLinkAdminListResponse>();
+        Assert.NotNull(privateList);
+        Assert.Empty(privateList.Items);
+
+        using var privateUpdateResponse = await sharedClient.PutAsJsonAsync(
+            $"/api/short-links/{created.Code}",
+            new
+            {
+                originalUrl = "https://example.com/not-shared",
+                expiredAtUtc = new DateTimeOffset(2026, 7, 20, 0, 0, 0, TimeSpan.Zero)
+            });
+        Assert.Equal(HttpStatusCode.Forbidden, privateUpdateResponse.StatusCode);
+
+        using var shareResponse = await ownerClient.PutAsJsonAsync(
+            $"/api/short-links/{created.Code}/shares",
+            new { username = "shared", access = "View" });
+        Assert.Equal(HttpStatusCode.OK, shareResponse.StatusCode);
+
+        using var listResponse = await sharedClient.GetAsync("/api/short-links?page=1&limit=10");
+        var list = await listResponse.Content.ReadFromJsonAsync<ShortLinkAdminListResponse>();
+        var sharedLink = Assert.Single(list!.Items);
+        Assert.Equal(created.Code, sharedLink.Code);
+        Assert.Equal("View", sharedLink.AccessLevel);
+
+        using var updateResponse = await sharedClient.PutAsJsonAsync(
+            $"/api/short-links/{created.Code}",
+            new
+            {
+                originalUrl = "https://example.com/forbidden-update",
+                expiredAtUtc = new DateTimeOffset(2026, 7, 20, 0, 0, 0, TimeSpan.Zero)
+            });
+        Assert.Equal(HttpStatusCode.Forbidden, updateResponse.StatusCode);
+
+        using var revokeResponse = await ownerClient.DeleteAsync(
+            $"/api/short-links/{created.Code}/shares/shared-user");
+        Assert.Equal(HttpStatusCode.NoContent, revokeResponse.StatusCode);
+
+        using var revokedListResponse = await sharedClient.GetAsync("/api/short-links?page=1&limit=10");
+        var revokedList = await revokedListResponse.Content.ReadFromJsonAsync<ShortLinkAdminListResponse>();
+        Assert.NotNull(revokedList);
+        Assert.Empty(revokedList.Items);
+
+        using var adminClient = factory.CreateClient();
+        adminClient.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", await LoginAsAdminAsync(adminClient));
+        using var adminListResponse = await adminClient.GetAsync("/api/short-links?page=1&limit=10");
+        var adminList = await adminListResponse.Content.ReadFromJsonAsync<ShortLinkAdminListResponse>();
+        Assert.Contains(adminList!.Items, item => item.Code == created.Code && item.AccessLevel == "Admin");
+    }
+
+    [Fact]
     public async Task SecurityApiKeys_AuthorizeProtectedEndpointsThroughOwningUserRoles()
     {
         await using var factory = new ShortLinkApiFactory(
@@ -999,9 +1087,9 @@ public sealed class ShortLinkEndpointsTests
         var deletePayload = await deleteResponse.Content.ReadFromJsonAsync<ShortLinkErrorResponse>();
 
         Assert.Equal(HttpStatusCode.OK, readResponse.StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, deleteResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, deleteResponse.StatusCode);
         Assert.NotNull(deletePayload);
-        Assert.Equal("forbidden", deletePayload.ErrorCode);
+        Assert.Equal("not_found", deletePayload.ErrorCode);
     }
 
     [Fact]
@@ -1060,7 +1148,8 @@ public sealed class ShortLinkEndpointsTests
         await using var factory = new ShortLinkApiFactory(
             enableFrontendFallback: false,
             securityEnabled: true,
-            securityRoles: new[] { ShortenLinkRoles.Viewer });
+            securityRoles: Array.Empty<string>(),
+            securityPermissions: new[] { ShortenLinkPermissions.ShortLinksRead });
         using var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add("X-ShortenLink-Api-Key", "test-admin-key");
 
@@ -2013,7 +2102,7 @@ public sealed class ShortLinkEndpointsTests
             });
         }
 
-        public async Task<List<ShortLinkClickRecord>> GetRecordedClicksAsync()
+        public async Task<List<ShortLinkClickPersistenceEntity>> GetRecordedClicksAsync()
         {
             using var scope = Services.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<ShortLinkDbContext>();
@@ -2024,7 +2113,7 @@ public sealed class ShortLinkEndpointsTests
                 .ToListAsync();
         }
 
-        public async Task<List<ShortenLinkUserApiKeyRecord>> GetUserApiKeyRecordsAsync()
+        public async Task<List<ShortenLinkUserApiKeyPersistenceEntity>> GetUserApiKeyRecordsAsync()
         {
             using var scope = Services.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<ShortLinkDbContext>();
@@ -2066,7 +2155,7 @@ public sealed class ShortLinkEndpointsTests
             using var scope = Services.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<ShortLinkDbContext>();
             await dbContext.Database.EnsureCreatedAsync();
-            await dbContext.EnsureSecurityIdentitySchemaAsync();
+            await dbContext.Database.EnsureCreatedAsync();
 
             var repository = new EfCoreShortenLinkSecurityUserRepository(dbContext);
             await repository.AddOrUpdateAsync(new ShortenLinkSecurityUser(
@@ -2226,7 +2315,7 @@ public sealed class ShortLinkEndpointsTests
     {
         using var response = await client.PostAsJsonAsync("/api/security/login", new
         {
-            username = "admin",
+            email = "admin@shortenlink.local",
             password = "admin"
         });
         var payload = await response.Content.ReadFromJsonAsync<SecurityLoginResponse>();
@@ -2371,7 +2460,8 @@ public sealed class ShortLinkEndpointsTests
         string OriginalUrl,
         DateTimeOffset CreatedAtUtc,
         DateTimeOffset? ExpiredAtUtc,
-        bool IsActive);
+        bool IsActive,
+        string? AccessLevel = null);
 
     private sealed record ShortLinkAdminListResponse(
         IReadOnlyList<ShortLinkAdminListItemResponse> Items,

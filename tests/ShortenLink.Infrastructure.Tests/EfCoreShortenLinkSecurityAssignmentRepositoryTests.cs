@@ -22,7 +22,7 @@ public sealed class EfCoreShortenLinkSecurityAssignmentRepositoryTests
             HashCredential("owner-key"),
             "Local Owner",
             new[] { "Owner" },
-            new[] { "short_links.export" },
+            new[] { "short_links.import" },
             true,
             createdAt));
 
@@ -33,7 +33,7 @@ public sealed class EfCoreShortenLinkSecurityAssignmentRepositoryTests
         Assert.True(stored.IsEnabled);
         Assert.Equal(createdAt, stored.CreatedAt);
         Assert.Equal(new[] { "Owner" }, stored.Roles);
-        Assert.Equal(new[] { "short_links.export" }, stored.Permissions);
+        Assert.Equal(new[] { "short_links.import" }, stored.Permissions);
     }
 
     [Fact]
@@ -152,21 +152,18 @@ public sealed class EfCoreShortenLinkSecurityAssignmentRepositoryTests
     }
 
     [Fact]
-    public async Task SchemaInitializer_CreatesSecurityAssignmentsTableWhenDatabaseAlreadyExists()
+    public async Task EnsureCreated_CreatesUsableSecurityAssignmentsSchema()
     {
-        await using var database = await SqliteTestDatabase.CreateWithLegacySchemaAsync();
+        await using var database = await SqliteTestDatabase.CreateAsync();
         await using var context = database.CreateContext();
-        await context.Database.EnsureCreatedAsync();
-
-        await context.EnsureSecurityAssignmentsSchemaAsync();
 
         var repository = new EfCoreShortenLinkSecurityAssignmentRepository(context);
         var credentialHash = HashCredential("backfill-key");
         await repository.AddOrUpdateAsync(new ShortenLinkSecurityAssignment(
             credentialHash,
-            "Backfilled Owner",
-            new[] { "Owner" },
-            new[] { "security.assignments.manage" },
+            "Bootstrap Admin",
+            new[] { ShortenLinkSystemRoles.Admin },
+            new[] { "audit_logs.read" },
             true,
             new DateTimeOffset(2026, 7, 16, 16, 0, 0, TimeSpan.Zero)));
 
@@ -174,7 +171,7 @@ public sealed class EfCoreShortenLinkSecurityAssignmentRepositoryTests
         var indexes = await database.GetIndexNamesAsync();
 
         Assert.NotNull(stored);
-        Assert.Equal("Backfilled Owner", stored.Name);
+        Assert.Equal("Bootstrap Admin", stored.Name);
         Assert.Contains("IX_shorten_link_security_assignments_IsEnabled", indexes);
         Assert.Contains("IX_shorten_link_security_assignments_CreatedAt", indexes);
     }
@@ -187,7 +184,7 @@ public sealed class EfCoreShortenLinkSecurityAssignmentRepositoryTests
             .Options;
 
         using var context = new ShortLinkDbContext(options);
-        var entityType = context.Model.FindEntityType(typeof(ShortenLinkSecurityAssignmentRecord));
+        var entityType = context.Model.FindEntityType(typeof(ShortenLinkSecurityAssignmentPersistenceEntity));
 
         Assert.NotNull(entityType);
 

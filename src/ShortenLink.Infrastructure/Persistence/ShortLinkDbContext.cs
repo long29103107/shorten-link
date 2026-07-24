@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using ShortenLink.Core.Domain;
 
 namespace ShortenLink.Infrastructure.Persistence;
 
@@ -9,28 +11,31 @@ public sealed class ShortLinkDbContext : DbContext
     {
     }
 
-    public DbSet<ShortLinkRecord> ShortLinks => Set<ShortLinkRecord>();
+    public DbSet<ShortLinkPersistenceEntity> ShortLinks => Set<ShortLinkPersistenceEntity>();
 
-    public DbSet<ShortLinkClickRecord> ShortLinkClicks => Set<ShortLinkClickRecord>();
+    public DbSet<ShortLinkClickPersistenceEntity> ShortLinkClicks => Set<ShortLinkClickPersistenceEntity>();
 
-    public DbSet<ShortenLinkSecurityAssignmentRecord> SecurityAssignments => Set<ShortenLinkSecurityAssignmentRecord>();
+    public DbSet<ShortLinkSharePersistenceEntity> ShortLinkShares => Set<ShortLinkSharePersistenceEntity>();
 
-    public DbSet<ShortenLinkCustomRoleRecord> SecurityCustomRoles => Set<ShortenLinkCustomRoleRecord>();
+    public DbSet<ShortenLinkSecurityAssignmentPersistenceEntity> SecurityAssignments => Set<ShortenLinkSecurityAssignmentPersistenceEntity>();
 
-    public DbSet<ShortenLinkRolePermissionOverrideRecord> SecurityRolePermissionOverrides => Set<ShortenLinkRolePermissionOverrideRecord>();
+    public DbSet<ShortenLinkCustomRolePersistenceEntity> SecurityCustomRoles => Set<ShortenLinkCustomRolePersistenceEntity>();
 
-    public DbSet<ShortenLinkSecurityUserRecord> SecurityUsers => Set<ShortenLinkSecurityUserRecord>();
+    public DbSet<ShortenLinkRolePermissionOverridePersistenceEntity> SecurityRolePermissionOverrides => Set<ShortenLinkRolePermissionOverridePersistenceEntity>();
 
-    public DbSet<ShortenLinkUserApiKeyRecord> SecurityUserApiKeys => Set<ShortenLinkUserApiKeyRecord>();
+    public DbSet<ShortenLinkSecurityUserPersistenceEntity> SecurityUsers => Set<ShortenLinkSecurityUserPersistenceEntity>();
+
+    public DbSet<ShortenLinkUserApiKeyPersistenceEntity> SecurityUserApiKeys => Set<ShortenLinkUserApiKeyPersistenceEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ArgumentNullException.ThrowIfNull(modelBuilder);
 
-        modelBuilder.Entity<ShortLinkRecord>(entity =>
+        modelBuilder.Entity<ShortLinkPersistenceEntity>(entity =>
         {
             entity.ToTable("short_links");
-            entity.HasKey(link => link.Code);
+            ConfigureBaseEntity(entity);
+            entity.HasIndex(link => link.Code).IsUnique();
 
             entity.Property(link => link.Code)
                 .HasMaxLength(128)
@@ -46,21 +51,24 @@ public sealed class ShortLinkDbContext : DbContext
             entity.Property(link => link.IsActive)
                 .IsRequired();
 
-            entity.HasIndex(link => link.Code)
-                .IsUnique();
+            entity.Property(link => link.CreatedByUserId)
+                .HasMaxLength(128);
+
+            entity.Property(link => link.CreatedByDisplayName)
+                .HasMaxLength(256);
+
+            entity.Property(link => link.CreatedByUsername)
+                .HasMaxLength(256);
 
             entity.HasIndex(link => link.CreatedAt);
             entity.HasIndex(link => link.ExpiresAt);
             entity.HasIndex(link => link.IsActive);
         });
 
-        modelBuilder.Entity<ShortLinkClickRecord>(entity =>
+        modelBuilder.Entity<ShortLinkClickPersistenceEntity>(entity =>
         {
             entity.ToTable("short_link_clicks");
-            entity.HasKey(click => click.Id);
-
-            entity.Property(click => click.Id)
-                .ValueGeneratedOnAdd();
+            ConfigureBaseEntity(entity);
 
             entity.Property(click => click.ShortCode)
                 .HasMaxLength(128)
@@ -83,10 +91,10 @@ public sealed class ShortLinkDbContext : DbContext
             entity.HasIndex(click => new { click.ShortCode, click.ClickedAtUtc });
         });
 
-        modelBuilder.Entity<ShortenLinkSecurityAssignmentRecord>(entity =>
+        modelBuilder.Entity<ShortenLinkSecurityAssignmentPersistenceEntity>(entity =>
         {
             entity.ToTable("shorten_link_security_assignments");
-            entity.HasKey(assignment => assignment.CredentialKeyHash);
+            ConfigureBaseEntity(entity);
 
             entity.Property(assignment => assignment.CredentialKeyHash)
                 .HasMaxLength(128)
@@ -112,14 +120,15 @@ public sealed class ShortLinkDbContext : DbContext
 
             entity.HasIndex(assignment => assignment.IsEnabled);
             entity.HasIndex(assignment => assignment.CreatedAt);
+            entity.HasIndex(assignment => assignment.CredentialKeyHash).IsUnique();
         });
 
-        modelBuilder.Entity<ShortenLinkCustomRoleRecord>(entity =>
+        modelBuilder.Entity<ShortenLinkCustomRolePersistenceEntity>(entity =>
         {
             entity.ToTable("shorten_link_security_custom_roles");
-            entity.HasKey(role => role.Id);
+            ConfigureBaseEntity(entity);
 
-            entity.Property(role => role.Id)
+            entity.Property(role => role.RoleId)
                 .HasMaxLength(128)
                 .IsRequired();
 
@@ -139,14 +148,29 @@ public sealed class ShortLinkDbContext : DbContext
 
             entity.HasIndex(role => role.Name)
                 .IsUnique();
+            entity.HasIndex(role => role.RoleId)
+                .IsUnique();
             entity.HasIndex(role => role.IsEnabled);
             entity.HasIndex(role => role.CreatedAt);
         });
 
-        modelBuilder.Entity<ShortenLinkRolePermissionOverrideRecord>(entity =>
+        modelBuilder.Entity<ShortLinkSharePersistenceEntity>(entity =>
+        {
+            entity.ToTable("short_link_shares");
+            ConfigureBaseEntity(entity);
+            entity.Property(share => share.ShortCode).HasMaxLength(128).IsRequired();
+            entity.Property(share => share.UserId).HasMaxLength(128).IsRequired();
+            entity.Property(share => share.Access).IsRequired();
+            entity.Property(share => share.CreatedByUserId).HasMaxLength(128).IsRequired();
+            entity.Property(share => share.CreatedAt).IsRequired();
+            entity.HasIndex(share => share.UserId);
+            entity.HasIndex(share => new { share.ShortCode, share.UserId }).IsUnique();
+        });
+
+        modelBuilder.Entity<ShortenLinkRolePermissionOverridePersistenceEntity>(entity =>
         {
             entity.ToTable("shorten_link_security_role_permission_overrides");
-            entity.HasKey(item => new { item.RoleId, item.Permission });
+            ConfigureBaseEntity(entity);
 
             entity.Property(item => item.RoleId)
                 .HasMaxLength(128)
@@ -160,14 +184,15 @@ public sealed class ShortLinkDbContext : DbContext
                 .IsRequired();
 
             entity.HasIndex(item => item.RoleId);
+            entity.HasIndex(item => new { item.RoleId, item.Permission }).IsUnique();
         });
 
-        modelBuilder.Entity<ShortenLinkSecurityUserRecord>(entity =>
+        modelBuilder.Entity<ShortenLinkSecurityUserPersistenceEntity>(entity =>
         {
             entity.ToTable("shorten_link_security_users");
-            entity.HasKey(user => user.Id);
+            ConfigureBaseEntity(entity);
 
-            entity.Property(user => user.Id)
+            entity.Property(user => user.UserId)
                 .HasMaxLength(128)
                 .IsRequired();
 
@@ -201,16 +226,18 @@ public sealed class ShortLinkDbContext : DbContext
 
             entity.HasIndex(user => user.Username)
                 .IsUnique();
+            entity.HasIndex(user => user.UserId)
+                .IsUnique();
             entity.HasIndex(user => user.IsEnabled);
             entity.HasIndex(user => user.IsHidden);
         });
 
-        modelBuilder.Entity<ShortenLinkUserApiKeyRecord>(entity =>
+        modelBuilder.Entity<ShortenLinkUserApiKeyPersistenceEntity>(entity =>
         {
             entity.ToTable("shorten_link_security_user_api_keys");
-            entity.HasKey(apiKey => apiKey.Id);
+            ConfigureBaseEntity(entity);
 
-            entity.Property(apiKey => apiKey.Id)
+            entity.Property(apiKey => apiKey.ApiKeyId)
                 .HasMaxLength(128)
                 .IsRequired();
 
@@ -235,7 +262,20 @@ public sealed class ShortLinkDbContext : DbContext
             entity.HasIndex(apiKey => apiKey.UserId);
             entity.HasIndex(apiKey => apiKey.KeyHash)
                 .IsUnique();
+            entity.HasIndex(apiKey => apiKey.ApiKeyId)
+                .IsUnique();
             entity.HasIndex(apiKey => apiKey.IsEnabled);
         });
+    }
+
+    private static void ConfigureBaseEntity<TEntity>(EntityTypeBuilder<TEntity> entity)
+        where TEntity : BaseEntity<Guid>
+    {
+        entity.HasKey(item => item.Id);
+        entity.Property(item => item.Id).ValueGeneratedNever();
+        entity.Property(item => item.CreatedAt).IsRequired();
+        entity.Property(item => item.CreatedBy);
+        entity.Property(item => item.UpdatedBy);
+        entity.Property(item => item.UpdatedAt);
     }
 }

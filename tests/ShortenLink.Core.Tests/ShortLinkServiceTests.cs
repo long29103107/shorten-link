@@ -1,6 +1,5 @@
 using ShortenLink.Core.Domain;
 using ShortenLink.Core.Generation;
-using ShortenLink.Core.Repositories;
 using ShortenLink.Core.Services;
 using Xunit;
 
@@ -31,11 +30,19 @@ public sealed class ShortLinkServiceTests
             timeProvider: new FixedTimeProvider(now));
 
         var result = await service.CreateAsync(
-            new CreateShortLinkRequest("https://openai.com", now.AddDays(1)));
+            new CreateShortLinkRequest(
+                "https://openai.com",
+                now.AddDays(1),
+                "user-1",
+                "Ada Lovelace",
+                "ada@example.com"));
 
         Assert.True(result.Succeeded);
         Assert.NotNull(result.ShortLink);
         Assert.Equal("fresh01", result.ShortLink.Code);
+        Assert.Equal("user-1", result.ShortLink.CreatedByUserId);
+        Assert.Equal("Ada Lovelace", result.ShortLink.CreatedByDisplayName);
+        Assert.Equal("ada@example.com", result.ShortLink.CreatedByUsername);
     }
 
     [Fact]

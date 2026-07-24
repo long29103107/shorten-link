@@ -1,5 +1,5 @@
 export type LoginFormInput = {
-  username: string;
+  email: string;
   password: string;
 };
 
@@ -15,8 +15,8 @@ export type ManagedUserFieldErrors = Partial<Record<keyof ManagedUserFormInput, 
 
 export function validateLoginForm(form: LoginFormInput): LoginFieldErrors {
   const errors: LoginFieldErrors = {};
-  if (!form.username.trim()) {
-    errors.username = "Enter your username.";
+  if (!form.email.trim()) {
+    errors.email = "Enter your email.";
   }
   if (!form.password.trim()) {
     errors.password = "Enter your password.";
@@ -25,7 +25,7 @@ export function validateLoginForm(form: LoginFormInput): LoginFieldErrors {
 }
 
 export function mapLoginApiFieldErrors(fieldErrors: Record<string, string>): LoginFieldErrors {
-  return pickKnownFields(fieldErrors, ["username", "password"]);
+  return pickKnownFields(fieldErrors, ["email", "password"]);
 }
 
 export function validateManagedUserForm(

@@ -112,7 +112,7 @@ public sealed class EfCoreShortLinkClickRepositoryTests
             .Options;
 
         using var context = new ShortLinkDbContext(options);
-        var entityType = context.Model.FindEntityType(typeof(ShortLinkClickRecord));
+        var entityType = context.Model.FindEntityType(typeof(ShortLinkClickPersistenceEntity));
 
         Assert.NotNull(entityType);
 
@@ -160,7 +160,7 @@ public sealed class EfCoreShortLinkClickRepositoryTests
         public EfCoreShortLinkClickRepository CreateRepository() =>
             new(CreateContext());
 
-        public async Task<List<ShortLinkClickRecord>> GetClicksAsync()
+        public async Task<List<ShortLinkClickPersistenceEntity>> GetClicksAsync()
         {
             await using var context = CreateContext();
             return await context.ShortLinkClicks

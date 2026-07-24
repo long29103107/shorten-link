@@ -8,10 +8,10 @@ The reusable library projects are intentionally separated from the demo applicat
 
 ```text
 src/
-  ShortenLink.Core/              # Domain contracts and core abstractions
+  ShortenLink.Core/              # Domain, Contracts, and centralized Abstractions
   ShortenLink.Infrastructure/    # Persistence and provider adapters
-  ShortenLink.AspNetCore/        # DI setup and endpoint mapping integration
-  ShortenLink.Api/               # Demo ASP.NET Core API host
+  ShortenLink.AspNetCore/        # DI setup, authorization, and host integration
+  ShortenLink.Api/               # ASP.NET Core API host and endpoint groups
   ShortenLink.Web/               # Demo React + Vite frontend
 
 tests/
@@ -24,7 +24,7 @@ tests/
 
 | Package | Use when |
 |---|---|
-| `ShortenLink.AspNetCore` | You are building an ASP.NET Core host and want DI registration, options binding, endpoint mapping, redirect fallback, analytics worker integration, cache wiring, and rate limiting. Start here for normal API projects. |
+| `ShortenLink.AspNetCore` | You are building an ASP.NET Core host and want DI registration, options binding, authorization, redirect fallback, analytics worker integration, cache wiring, and rate limiting. |
 | `ShortenLink.Core` | You need direct access to reusable domain models, validation, service contracts, request/result types, or `IShortLinkService` from non-host code. |
 | `ShortenLink.Infrastructure` | You are composing persistence manually or extending provider wiring. Most ASP.NET Core hosts receive it transitively through `ShortenLink.AspNetCore`. |
 
@@ -175,7 +175,7 @@ Keep rehearsal artifacts for inspection when needed:
 
 ## Use From Another .NET App
 
-Most ASP.NET Core consumers should start with `ShortenLink.AspNetCore`. That package is the host-facing entry point for dependency injection and endpoint mapping. It brings the lower-level reusable projects with it through package/project references.
+Most ASP.NET Core consumers should start with `ShortenLink.AspNetCore`. That package is the host-facing entry point for dependency injection and runtime integration. Endpoint presentation is composed explicitly by the application host.
 
 ### Consumer Package Smoke
 
@@ -244,7 +244,7 @@ builder.Services.AddShortenLink(builder.Configuration);
 var app = builder.Build();
 
 app.UseShortenLinkRateLimiting();
-app.MapShortenLinkEndpoints();
+// Map the endpoint groups owned by your application host.
 
 app.Run();
 ```

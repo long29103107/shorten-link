@@ -1,6 +1,8 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using ShortenLink.Core.Domain;
+using ShortenLink.Core.Security;
+using ShortenLink.Core.Services;
 using ShortenLink.Infrastructure.Persistence;
 using ShortenLink.Infrastructure.Repositories;
 using Xunit;
@@ -16,7 +18,14 @@ public sealed class EfCoreShortLinkRepositoryTests
         var repository = database.CreateRepository();
         var createdAt = new DateTimeOffset(2026, 7, 11, 9, 30, 0, TimeSpan.Zero);
         var expiresAt = createdAt.AddDays(7);
-        var shortLink = new ShortLink("abc1234", new Uri("https://example.com/docs"), createdAt, expiresAt);
+        var shortLink = new ShortLink(
+            "abc1234",
+            new Uri("https://example.com/docs"),
+            createdAt,
+            expiresAt,
+            createdByUserId: "user-1",
+            createdByDisplayName: "Ada Lovelace",
+            createdByUsername: "ada@example.com");
 
         await repository.AddAsync(shortLink);
 
@@ -28,6 +37,47 @@ public sealed class EfCoreShortLinkRepositoryTests
         Assert.Equal(createdAt, stored.CreatedAt);
         Assert.Equal(expiresAt, stored.ExpiresAt);
         Assert.True(stored.IsActive);
+        Assert.Equal("user-1", stored.CreatedByUserId);
+        Assert.Equal("Ada Lovelace", stored.CreatedByDisplayName);
+        Assert.Equal("ada@example.com", stored.CreatedByUsername);
+    }
+
+    [Fact]
+    public async Task ListPageAsync_AppliesOwnerAndSharedAccessScope()
+    {
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var repository = database.CreateRepository();
+        var now = new DateTimeOffset(2026, 7, 24, 3, 0, 0, TimeSpan.Zero);
+        await repository.AddAsync(new ShortLink(
+            "owned01", new Uri("https://example.com/owned"), now,
+            createdByUserId: "user-1"));
+        await repository.AddAsync(new ShortLink(
+            "shared1", new Uri("https://example.com/shared"), now.AddMinutes(1),
+            createdByUserId: "user-2"));
+        await repository.AddAsync(new ShortLink(
+            "private", new Uri("https://example.com/private"), now.AddMinutes(2),
+            createdByUserId: "user-3"));
+
+        var page = await repository.ListPageAsync(
+            0,
+            25,
+            new ShortLinkListQuery(
+                null,
+                ShortLinkListStatus.All,
+                ShortLinkListSortBy.Created,
+                ShortLinkSortDirection.Desc,
+                now,
+                now.AddDays(7),
+                new ShortLinkAccessScope(
+                    "user-1",
+                    false,
+                    new Dictionary<string, ShortLinkShareAccess>
+                    {
+                        ["shared1"] = ShortLinkShareAccess.View
+                    })));
+
+        Assert.Equal(2, page.TotalCount);
+        Assert.Equal(new[] { "shared1", "owned01" }, page.Items.Select(item => item.Code));
     }
 
     [Fact]
@@ -125,7 +175,7 @@ public sealed class EfCoreShortLinkRepositoryTests
             .Options;
 
         using var context = new ShortLinkDbContext(options);
-        var entityType = context.Model.FindEntityType(typeof(ShortLinkRecord));
+        var entityType = context.Model.FindEntityType(typeof(ShortLinkPersistenceEntity));
 
         Assert.NotNull(entityType);
 

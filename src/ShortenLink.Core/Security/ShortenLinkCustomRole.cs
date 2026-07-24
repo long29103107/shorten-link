@@ -2,15 +2,16 @@ using ShortenLink.Core.Domain;
 
 namespace ShortenLink.Core.Security;
 
-public sealed class ShortenLinkCustomRoleEntity : BaseEntity
+public sealed class ShortenLinkCustomRoleEntity : BaseEntity<Guid>
 {
     public ShortenLinkCustomRoleEntity(
         string id,
         string name,
         IReadOnlyList<string> permissions,
         bool isEnabled,
-        DateTimeOffset createdAt)
-        : base(createdAt)
+        DateTimeOffset createdAt,
+        Guid? technicalId = null)
+        : base(createdAt, technicalId ?? Guid.CreateVersion7())
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         ArgumentException.ThrowIfNullOrWhiteSpace(name);

@@ -90,7 +90,7 @@ function toRoleForm(role: SecurityRole): RoleFormState {
   };
 }
 
-export function SecurityManagementPage({ section }: { section: SecuritySection }) {
+export function SecurityManagementPage({ section, onDirtyChange }: { section: SecuritySection; onDirtyChange?: (isDirty: boolean) => void }) {
   const adminPermissions = getAdminPermissionState();
   const currentUser = getStoredCurrentUser();
   const [isLoading, setIsLoading] = useState(false);
@@ -126,6 +126,7 @@ export function SecurityManagementPage({ section }: { section: SecuritySection }
   const [roleDialogMode, setRoleDialogMode] = useState<"create" | "edit" | null>(null);
   const [isSavingRole, setIsSavingRole] = useState(false);
   const [roleFormBeforeDialog, setRoleFormBeforeDialog] = useState<typeof roleForm | null>(null);
+  const [hasRoleDraftChanges, setHasRoleDraftChanges] = useState(false);
 
   const selectedUser = useMemo(
     () => users.find((user) => user.id === selectedUserId) ?? null,
@@ -150,6 +151,22 @@ export function SecurityManagementPage({ section }: { section: SecuritySection }
     (search: string) => updateUserDiscovery({ search: search.trim() }),
     400
   );
+  const hasUserDialogChanges = isCreateUserOpen
+    ? Boolean(createUserForm.email || createUserForm.displayName || createUserForm.password)
+    : userDialogMode === "edit" && selectedUser
+      ? profileEmail !== selectedUser.username || profileDisplayName !== selectedUser.displayName
+      : userDialogMode === "password"
+        ? Boolean(resetPassword || resetPasswordConfirm)
+        : userDialogMode === "roles" && selectedUser
+          ? [...assignedRoleIds].sort().join("|") !== [...selectedUser.roleIds].sort().join("|")
+          : false;
+  const hasUnsavedSecurityChanges = hasRoleDraftChanges || hasUserDialogChanges;
+
+  useEffect(() => {
+    onDirtyChange?.(hasUnsavedSecurityChanges);
+  }, [hasUnsavedSecurityChanges, onDirtyChange]);
+
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
   useEffect(() => {
     debouncedUserSearch.cancel();
@@ -178,6 +195,38 @@ export function SecurityManagementPage({ section }: { section: SecuritySection }
     void loadSecurity();
   }, []);
 
+  useEffect(() => {
+    if (section !== "roles") return;
+    const roles = [...systemRoles, ...customRoles];
+    if (roles.length === 0) {
+      if (roleForm.id) setRoleForm(emptyRoleForm);
+      return;
+    }
+    if (!roles.some((role) => role.id === roleForm.id)) {
+      setRoleForm(toRoleForm(roles[0]));
+      setRoleFieldErrors({});
+    }
+  }, [section, systemRoles, customRoles, roleForm.id]);
+
+  useEffect(() => {
+    if (section === "roles") {
+      setIsCreateUserOpen(false);
+      setUserDialogMode(null);
+      setUserPendingDelete(null);
+      setCreateUserForm({ email: "", displayName: "", password: "" });
+      setCreateUserErrors({});
+      setResetPassword("");
+      setResetPasswordConfirm("");
+      setHasRoleDraftChanges(false);
+      return;
+    }
+
+    const persistedRole = [...systemRoles, ...customRoles].find((role) => role.id === roleForm.id);
+    setRoleForm(persistedRole ? toRoleForm(persistedRole) : emptyRoleForm);
+    setRoleFieldErrors({});
+    setHasRoleDraftChanges(false);
+  }, [section]);
+
   const createUser = async () => {
     const errors = validateManagedUserForm(createUserForm);
     if (hasFieldErrors(errors)) {
@@ -194,7 +243,7 @@ export function SecurityManagementPage({ section }: { section: SecuritySection }
         username: createUserForm.email.trim(),
         displayName: createUserForm.displayName.trim(),
         password: null,
-        roleIds: [],
+        roleIds: ["User"],
         isEnabled: true
       });
       setUsers((current) => upsertBy(current, user, "id"));
@@ -382,23 +431,27 @@ export function SecurityManagementPage({ section }: { section: SecuritySection }
     }
   };
 
-  const saveRolePermissionOverrides = async () => {
-    if (!roleForm.id) return;
+  const saveRolePermissionOverrides = async (drafts: RoleFormState[]) => {
+    if (drafts.length === 0) return false;
     setActionFailure(null);
     setIsSavingRole(true);
     try {
-      const role = await replaceSecurityRolePermissionOverrides(roleForm.id, {
-        overrides: Object.entries(roleForm.permissionOverrides).map(([permission, isAllowed]) => ({ permission, isAllowed }))
+      const savedRoles = await Promise.all(drafts.map((draft) =>
+        replaceSecurityRolePermissionOverrides(draft.id, {
+          overrides: Object.entries(draft.permissionOverrides).map(([permission, isAllowed]) => ({ permission, isAllowed }))
+        })
+      ));
+      savedRoles.forEach((role) => {
+        if (!role.isSystem) setCustomRoles((current) => upsertBy(current, role, "id"));
+        else setSystemRoles((current) => upsertBy(current, role, "id"));
       });
-      if (!role.isSystem) {
-        setCustomRoles((current) => upsertBy(current, role, "id"));
-      } else {
-        setSystemRoles((current) => upsertBy(current, role, "id"));
-      }
-      setRoleForm(toRoleForm(role));
-      showToast({ title: "Permission overrides saved", message: role.name, variant: "success" });
+      const selectedSavedRole = savedRoles.find((role) => role.id === roleForm.id);
+      if (selectedSavedRole) setRoleForm(toRoleForm(selectedSavedRole));
+      showToast({ title: "Permission changes saved", message: `${savedRoles.length} role${savedRoles.length === 1 ? "" : "s"} updated.`, variant: "success" });
+      return true;
     } catch (error) {
       setActionFailure(toRecoveryNotice(error, "Permission overrides could not be saved."));
+      return false;
     } finally {
       setIsSavingRole(false);
     }
@@ -474,7 +527,7 @@ export function SecurityManagementPage({ section }: { section: SecuritySection }
   }
 
   if (!adminPermissions.canManageSecurityAssignments) {
-    return <EmptyState title="Permission required" description="This section requires security.assignments.manage." />;
+    return <EmptyState title="Admin role required" description="Only administrators can manage users and roles." />;
   }
 
   return (
@@ -582,15 +635,15 @@ export function SecurityManagementPage({ section }: { section: SecuritySection }
         {section === "roles" ? (
           isLoading && systemRoles.length + customRoles.length === 0 ? (
             <EmptyState title="Loading roles" description="Loading role definitions and permission assignments." />
-          ) : systemRoles.length + customRoles.length === 0 ? (
-            <EmptyState title="No roles" description="No role definitions are available." />
           ) : <RolePermissionMatrix
             roles={[...systemRoles, ...customRoles]}
             form={roleForm}
             errors={roleFieldErrors}
             onFormChange={setRoleForm}
             onErrorsChange={setRoleFieldErrors}
-            onSave={() => void saveRolePermissionOverrides()}
+            isSaving={isSavingRole}
+            onDirtyChange={setHasRoleDraftChanges}
+            onSave={saveRolePermissionOverrides}
           />
         ) : null}
 
@@ -693,13 +746,15 @@ function RoleChoiceGroup({ roles, selected, error, onToggle }: { roles: Security
   );
 }
 
-function RolePermissionMatrix({ roles, form, errors, onFormChange, onErrorsChange, onSave }: {
+function RolePermissionMatrix({ roles, form, errors, isSaving, onDirtyChange, onFormChange, onErrorsChange, onSave }: {
   roles: SecurityRole[];
   form: RoleFormState;
   errors: CustomRoleFieldErrors;
+  isSaving: boolean;
+  onDirtyChange: (isDirty: boolean) => void;
   onFormChange: (form: RoleFormState) => void;
   onErrorsChange: (errors: CustomRoleFieldErrors) => void;
-  onSave: () => void;
+  onSave: (drafts: RoleFormState[]) => Promise<boolean>;
 }) {
   const selectedRole = roles.find((role) => role.id === form.id);
   const [roleSearch, setRoleSearch] = useState("");
@@ -708,17 +763,25 @@ function RolePermissionMatrix({ roles, form, errors, onFormChange, onErrorsChang
     () => Object.fromEntries(permissionGroups.map((group) => [group.id, true]))
   );
   const [isSaveConfirmationOpen, setIsSaveConfirmationOpen] = useState(false);
-  const [pendingBulkChange, setPendingBulkChange] = useState<{
-    groupName: string;
-    permissions: string[];
-    allowed: boolean;
-  } | null>(null);
+  const [roleDrafts, setRoleDrafts] = useState<Record<string, RoleFormState>>({});
   const persistedOverrides = Object.fromEntries(
     (selectedRole?.permissionOverrides ?? []).map((item) => [item.permission, item.isAllowed])
   );
-  const hasPermissionChanges = permissionOptions.some(
-    (permission) => form.permissionOverrides[permission] !== persistedOverrides[permission]
-  );
+  const hasChanges = (draft: RoleFormState) => {
+    const role = roles.find((item) => item.id === draft.id);
+    if (!role) return false;
+    const persisted = Object.fromEntries(role.permissionOverrides.map((item) => [item.permission, item.isAllowed]));
+    return permissionOptions.some((permission) => draft.permissionOverrides[permission] !== persisted[permission]);
+  };
+  const dirtyRoleDrafts = Object.values(roleDrafts).filter(hasChanges);
+  const hasPermissionChanges = dirtyRoleDrafts.length > 0;
+  useEffect(() => {
+    onDirtyChange(hasPermissionChanges);
+  }, [hasPermissionChanges, onDirtyChange]);
+  const updateRoleDraft = (nextForm: RoleFormState) => {
+    setRoleDrafts((current) => ({ ...current, [nextForm.id]: nextForm }));
+    onFormChange(nextForm);
+  };
   const visibleRoles = discoverSecurityRoles(roles, roleSearch);
   const normalizedPermissionSearch = permissionSearch.trim().toLowerCase();
   const visiblePermissionGroups = discoverPermissionGroups(permissionGroups, permissionSearch, getPermissionDescription);
@@ -730,7 +793,7 @@ function RolePermissionMatrix({ roles, form, errors, onFormChange, onErrorsChang
     const permissions = allowed
       ? Array.from(new Set([...form.permissions, permission]))
       : form.permissions.filter((value) => value !== permission);
-    onFormChange({ ...form, permissions, permissionOverrides });
+    updateRoleDraft({ ...form, permissions, permissionOverrides });
     onErrorsChange({ ...errors, permissions: undefined });
   };
   const setPermissionGroup = (permissionsToChange: string[], allowed: boolean) => {
@@ -745,7 +808,7 @@ function RolePermissionMatrix({ roles, form, errors, onFormChange, onErrorsChang
       else permissionOverrides[permission] = allowed;
     });
 
-    onFormChange({ ...form, permissions: Array.from(permissionSet), permissionOverrides });
+    updateRoleDraft({ ...form, permissions: Array.from(permissionSet), permissionOverrides });
     onErrorsChange({ ...errors, permissions: undefined });
   };
   return (
@@ -756,29 +819,26 @@ function RolePermissionMatrix({ roles, form, errors, onFormChange, onErrorsChang
         <div className="role-picker-list">
           {visibleRoles.map((role) => (
             <div key={role.id} className={form.id === role.id ? "role-picker-item role-picker-item-active" : "role-picker-item"}>
-              <button className="role-picker-select" type="button" onClick={() => { setPendingBulkChange(null); setIsSaveConfirmationOpen(false); onFormChange(toRoleForm(role)); onErrorsChange({}); }}>
+              <button className="role-picker-select" type="button" onClick={() => { setIsSaveConfirmationOpen(false); onFormChange(roleDrafts[role.id] ?? toRoleForm(role)); onErrorsChange({}); }}>
                 <span>{role.name}</span>
                 <small>{role.isSystem ? "System" : "Custom"}</small>
               </button>
             </div>
           ))}
-          {visibleRoles.length === 0 ? <p className="muted-copy role-picker-empty">No matching roles.</p> : null}
+          {visibleRoles.length === 0 && roleSearch.trim() ? <p className="muted-copy role-picker-empty">No matching roles.</p> : null}
         </div>
       </aside>
       <div className="permission-matrix">
         <div className="role-editor-heading">
           <div><p className="eyebrow">Selected role</p><h3>{selectedRole?.name ?? "Choose a role"}</h3></div>
           <div className="role-editor-actions">
-            {selectedRole?.isSystem ? <Badge variant="secondary">System role · definition read only</Badge> : null}
-            {hasPermissionChanges ? <Badge variant="secondary">Unsaved changes</Badge> : null}
-            {selectedRole ? <Button disabled={!hasPermissionChanges} onClick={() => setIsSaveConfirmationOpen(true)}>Save changes</Button> : null}
+            {selectedRole ? <Input aria-label="Search permissions" placeholder="Search permissions" value={permissionSearch} onChange={(event) => setPermissionSearch(event.target.value)} /> : null}
+            {selectedRole && hasPermissionChanges ? <Badge variant="secondary">{dirtyRoleDrafts.length} role{dirtyRoleDrafts.length === 1 ? "" : "s"} changed</Badge> : null}
+            {selectedRole ? <Button disabled={!hasPermissionChanges || isSaving} onClick={() => setIsSaveConfirmationOpen(true)}>{isSaving ? "Saving..." : "Save changes"}</Button> : null}
           </div>
         </div>
         {errors.permissions ? <span className="field-error">{errors.permissions}</span> : null}
-        <div className="permission-discovery-toolbar">
-          <Input aria-label="Search permissions" placeholder="Search permission name, code, or description" value={permissionSearch} onChange={(event) => setPermissionSearch(event.target.value)} />
-        </div>
-        <div className="permission-group-list">
+        {selectedRole ? <div className="permission-group-list">
           {visiblePermissionGroups.map((group) => {
             const allAllowed = group.permissions.every((permission) => form.permissions.includes(permission));
             const isExpanded = normalizedPermissionSearch ? true : expandedPermissionGroups[group.id] ?? true;
@@ -801,11 +861,7 @@ function RolePermissionMatrix({ roles, form, errors, onFormChange, onErrorsChang
                 <PermissionDecision
                   allowed={allAllowed}
                   label={`${allAllowed ? "Disable" : "Enable"} all ${group.name} permissions`}
-                  onToggle={() => setPendingBulkChange({
-                    groupName: group.name,
-                    permissions: group.permissions,
-                    allowed: !allAllowed
-                  })}
+                  onToggle={() => setPermissionGroup(group.permissions, !allAllowed)}
                 />
               </div>
               <div
@@ -834,29 +890,18 @@ function RolePermissionMatrix({ roles, form, errors, onFormChange, onErrorsChang
             </section>;
           })}
           {selectedRole && visiblePermissionGroups.length === 0 ? <p className="muted-copy permission-search-empty">No matching permissions.</p> : null}
-        </div>
+        </div> : null}
       </div>
-      <ConfirmDialog
-        open={pendingBulkChange !== null}
-        title={`${pendingBulkChange?.allowed ? "Enable" : "Disable"} all permissions?`}
-        description={`This stages a bulk change for ${pendingBulkChange?.groupName ?? "this group"}. Nothing is sent until you choose Save changes.`}
-        confirmLabel={pendingBulkChange?.allowed ? "Enable all" : "Disable all"}
-        variant={pendingBulkChange?.allowed ? "default" : "destructive"}
-        onConfirm={() => {
-          const change = pendingBulkChange;
-          setPendingBulkChange(null);
-          if (change) setPermissionGroup(change.permissions, change.allowed);
-        }}
-        onCancel={() => setPendingBulkChange(null)}
-      />
       <ConfirmDialog
         open={isSaveConfirmationOpen}
         title="Save permission changes?"
-        description={`Apply all staged permission changes to ${selectedRole?.name ?? "this role"} in one update.`}
+        description={`Apply all staged permission changes to ${dirtyRoleDrafts.length} role${dirtyRoleDrafts.length === 1 ? "" : "s"} in one update.`}
         confirmLabel="Save changes"
         onConfirm={() => {
+          void onSave(dirtyRoleDrafts).then((succeeded) => {
+            if (succeeded) setRoleDrafts({});
+          });
           setIsSaveConfirmationOpen(false);
-          onSave();
         }}
         onCancel={() => setIsSaveConfirmationOpen(false)}
       />

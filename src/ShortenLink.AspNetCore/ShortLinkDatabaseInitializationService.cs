@@ -1,7 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using ShortenLink.Core.Repositories;
 using ShortenLink.Core.Security;
 using ShortenLink.Infrastructure.Persistence;
 
@@ -21,8 +20,6 @@ internal sealed class ShortLinkDatabaseInitializationService : IHostedService
         await using var scope = scopeFactory.CreateAsyncScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<ShortLinkDbContext>();
         await dbContext.Database.EnsureCreatedAsync(cancellationToken).ConfigureAwait(false);
-        await dbContext.EnsureSecurityAssignmentsSchemaAsync(cancellationToken).ConfigureAwait(false);
-        await dbContext.EnsureSecurityIdentitySchemaAsync(cancellationToken).ConfigureAwait(false);
 
         var userRepository = scope.ServiceProvider.GetRequiredService<IShortenLinkSecurityUserRepository>();
         await userRepository

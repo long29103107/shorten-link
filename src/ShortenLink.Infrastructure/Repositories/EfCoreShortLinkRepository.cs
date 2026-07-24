@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 using ShortenLink.Core.Domain;
-using ShortenLink.Core.Repositories;
 using ShortenLink.Core.Services;
 using ShortenLink.Infrastructure.Persistence;
 
@@ -37,8 +36,30 @@ public sealed class EfCoreShortLinkRepository : IShortLinkRepository
             .ToList();
     }
 
+    public async Task<IReadOnlyList<ShortLink>> ListAccessibleRecentAsync(
+        int limit,
+        DateTimeOffset? beforeCreatedAt,
+        string? beforeCode,
+        ShortLinkAccessScope accessScope,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(accessScope);
+        var records = await dbContext.ShortLinks
+            .AsNoTracking()
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        return records
+            .Where(record => IsAccessible(record, accessScope))
+            .OrderByDescending(link => link.CreatedAt)
+            .ThenBy(link => link.Code, StringComparer.Ordinal)
+            .Where(link => IsAfterCursor(link, beforeCreatedAt, beforeCode))
+            .Take(Math.Clamp(limit, 1, 500))
+            .Select(record => record.ToDomain())
+            .ToList();
+    }
+
     private static bool IsAfterCursor(
-        ShortLinkRecord link,
+        ShortLinkPersistenceEntity link,
         DateTimeOffset? beforeCreatedAt,
         string? beforeCode)
     {
@@ -97,6 +118,7 @@ public sealed class EfCoreShortLinkRepository : IShortLinkRepository
             .ConfigureAwait(false);
 
         var filtered = records
+            .Where(record => query.AccessScope is null || IsAccessible(record, query.AccessScope))
             .Where(record => MatchesSearch(record, query.Search))
             .Where(record => MatchesStatus(record, query))
             .ToList();
@@ -108,6 +130,12 @@ public sealed class EfCoreShortLinkRepository : IShortLinkRepository
 
         return new ShortLinkListPage(ordered, filtered.Count);
     }
+
+    private static bool IsAccessible(ShortLinkPersistenceEntity record, ShortLinkAccessScope accessScope) =>
+        accessScope.IsAdmin
+        || (!string.IsNullOrWhiteSpace(accessScope.UserId)
+            && string.Equals(record.CreatedByUserId, accessScope.UserId, StringComparison.Ordinal))
+        || accessScope.SharedAccess.ContainsKey(record.Code);
 
     public async Task<ShortLink?> FindByCodeAsync(
         string code,
@@ -121,7 +149,7 @@ public sealed class EfCoreShortLinkRepository : IShortLinkRepository
         return record?.ToDomain();
     }
 
-    private static bool MatchesSearch(ShortLinkRecord record, string? search)
+    private static bool MatchesSearch(ShortLinkPersistenceEntity record, string? search)
     {
         if (string.IsNullOrWhiteSpace(search))
         {
@@ -132,7 +160,7 @@ public sealed class EfCoreShortLinkRepository : IShortLinkRepository
             || record.OriginalUrl.Contains(search, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool MatchesStatus(ShortLinkRecord record, ShortLinkListQuery query) =>
+    private static bool MatchesStatus(ShortLinkPersistenceEntity record, ShortLinkListQuery query) =>
         query.Status switch
         {
             ShortLinkListStatus.Active => record.IsActive && !IsExpired(record, query.Now),
@@ -145,8 +173,8 @@ public sealed class EfCoreShortLinkRepository : IShortLinkRepository
             _ => true
         };
 
-    private static IEnumerable<ShortLinkRecord> ApplySort(
-        IEnumerable<ShortLinkRecord> records,
+    private static IEnumerable<ShortLinkPersistenceEntity> ApplySort(
+        IEnumerable<ShortLinkPersistenceEntity> records,
         ShortLinkListQuery query)
     {
         return query.SortBy switch
@@ -174,20 +202,20 @@ public sealed class EfCoreShortLinkRepository : IShortLinkRepository
         };
     }
 
-    private static IEnumerable<ShortLinkRecord> ApplyDirection<TKey>(
-        IEnumerable<ShortLinkRecord> records,
+    private static IEnumerable<ShortLinkPersistenceEntity> ApplyDirection<TKey>(
+        IEnumerable<ShortLinkPersistenceEntity> records,
         ShortLinkSortDirection direction,
-        Func<ShortLinkRecord, TKey> keySelector)
+        Func<ShortLinkPersistenceEntity, TKey> keySelector)
     {
         return direction == ShortLinkSortDirection.Asc
             ? records.OrderBy(keySelector).ThenBy(record => record.Code, StringComparer.Ordinal)
             : records.OrderByDescending(keySelector).ThenBy(record => record.Code, StringComparer.Ordinal);
     }
 
-    private static bool IsExpired(ShortLinkRecord record, DateTimeOffset now) =>
+    private static bool IsExpired(ShortLinkPersistenceEntity record, DateTimeOffset now) =>
         record.ExpiresAt is not null && record.ExpiresAt <= now;
 
-    private static int GetStatusRank(ShortLinkRecord record, DateTimeOffset now)
+    private static int GetStatusRank(ShortLinkPersistenceEntity record, DateTimeOffset now)
     {
         if (!record.IsActive)
         {
@@ -208,7 +236,7 @@ public sealed class EfCoreShortLinkRepository : IShortLinkRepository
     {
         ArgumentNullException.ThrowIfNull(shortLink);
 
-        dbContext.ShortLinks.Add(ShortLinkRecord.FromDomain(shortLink));
+        dbContext.ShortLinks.Add(ShortLinkPersistenceEntity.FromDomain(shortLink));
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -224,7 +252,7 @@ public sealed class EfCoreShortLinkRepository : IShortLinkRepository
 
         if (record is null)
         {
-            dbContext.ShortLinks.Add(ShortLinkRecord.FromDomain(shortLink));
+            dbContext.ShortLinks.Add(ShortLinkPersistenceEntity.FromDomain(shortLink));
         }
         else
         {

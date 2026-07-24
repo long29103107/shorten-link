@@ -1,5 +1,4 @@
 using ShortenLink.Core.Domain;
-using ShortenLink.Core.Repositories;
 using ShortenLink.Core.Services;
 
 namespace ShortenLink.AspNetCore;

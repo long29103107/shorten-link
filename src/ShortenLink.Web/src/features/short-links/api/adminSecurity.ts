@@ -4,13 +4,11 @@ export const shortLinkPermissions = {
   read: "short_links.read",
   create: "short_links.create",
   update: "short_links.update",
-  activate: "short_links.activate",
-  deactivate: "short_links.deactivate",
+  status: "short_links.status",
   delete: "short_links.delete",
-  export: "short_links.export",
+  import: "short_links.import",
   analyticsRead: "analytics.read",
-  auditLogsRead: "audit_logs.read",
-  securityAssignmentsManage: "security.assignments.manage"
+  auditLogsRead: "audit_logs.read"
 } as const;
 
 const allPermissions = Object.values(shortLinkPermissions);
@@ -20,18 +18,16 @@ const legacySessionTokenKey = "shortenLink.sessionToken";
 const currentUserKey = "shortenLink.currentUser";
 
 const rolePermissionBundles: Record<string, readonly string[]> = {
-  owner: allPermissions,
   admin: allPermissions,
-  editor: [
+  user: [
     shortLinkPermissions.read,
     shortLinkPermissions.create,
     shortLinkPermissions.update,
-    shortLinkPermissions.activate,
-    shortLinkPermissions.deactivate
-  ],
-  viewer: [
-    shortLinkPermissions.read,
-    shortLinkPermissions.analyticsRead
+    shortLinkPermissions.status,
+    shortLinkPermissions.delete,
+    shortLinkPermissions.import,
+    shortLinkPermissions.analyticsRead,
+    shortLinkPermissions.auditLogsRead
   ]
 };
 
@@ -108,11 +104,12 @@ export function getAdminPermissionState(): AdminPermissionState {
   return {
     canCreate: permissions.has(shortLinkPermissions.create),
     canUpdate: permissions.has(shortLinkPermissions.update),
-    canActivate: permissions.has(shortLinkPermissions.activate),
-    canDeactivate: permissions.has(shortLinkPermissions.deactivate),
+    canActivate: permissions.has(shortLinkPermissions.status),
+    canDeactivate: permissions.has(shortLinkPermissions.status),
     canDelete: permissions.has(shortLinkPermissions.delete),
     canReadAnalytics: permissions.has(shortLinkPermissions.analyticsRead),
-    canManageSecurityAssignments: permissions.has(shortLinkPermissions.securityAssignmentsManage)
+    canManageSecurityAssignments: getStoredCurrentUser()?.roles
+      .some((role) => role.toLowerCase() === "admin") ?? false
   };
 }
 

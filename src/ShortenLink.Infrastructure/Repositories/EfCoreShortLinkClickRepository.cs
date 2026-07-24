@@ -1,7 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using ShortenLink.Core;
 using ShortenLink.Core.Domain;
-using ShortenLink.Core.Repositories;
 using ShortenLink.Infrastructure.Persistence;
 
 namespace ShortenLink.Infrastructure.Repositories;
@@ -21,7 +20,7 @@ public sealed class EfCoreShortLinkClickRepository : IShortLinkClickRepository
     {
         ArgumentNullException.ThrowIfNull(shortLinkClick);
 
-        dbContext.ShortLinkClicks.Add(ShortLinkClickRecord.FromDomain(shortLinkClick));
+        dbContext.ShortLinkClicks.Add(ShortLinkClickPersistenceEntity.FromDomain(shortLinkClick));
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
 

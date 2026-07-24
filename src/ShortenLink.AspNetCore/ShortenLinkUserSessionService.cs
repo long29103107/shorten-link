@@ -3,7 +3,6 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
-using ShortenLink.Core.Repositories;
 using ShortenLink.Core.Security;
 
 namespace ShortenLink.AspNetCore;

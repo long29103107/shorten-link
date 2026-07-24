@@ -998,8 +998,128 @@ code {
   grid-column: 1 / -1;
 }
 
+.dashboard-activity-card {
+  grid-column: 1 / -1;
+}
+
+.dashboard-section-heading {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.dashboard-section-heading h2 {
+  margin: 6px 0 0;
+}
+
+.dashboard-activity-list {
+  display: grid;
+  margin-top: 18px;
+}
+
+.dashboard-activity-item {
+  align-items: center;
+  border-top: 1px solid var(--border);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 13px 0;
+}
+
+.dashboard-activity-marker {
+  background: var(--accent);
+  border-radius: 999px;
+  height: 8px;
+  width: 8px;
+}
+
+.dashboard-activity-item div {
+  display: grid;
+  gap: 3px;
+}
+
+.dashboard-activity-item span,
+.dashboard-activity-item time,
+.dashboard-activity-note {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.dashboard-activity-note {
+  margin: 12px 0 0;
+}
+
 .dashboard-health-card h2 {
   margin: 8px 0 0;
+}
+
+.dashboard-health-sources {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.dashboard-health-source {
+  align-items: center;
+  background: color-mix(in srgb, var(--surface-raised) 72%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 12px;
+}
+
+.creator-cell {
+  display: grid;
+  gap: 2px;
+  min-width: 120px;
+}
+
+.creator-cell span {
+  font-weight: 700;
+}
+
+.creator-cell small {
+  color: var(--muted);
+}
+
+.share-dialog {
+  max-width: 720px;
+}
+
+.share-form {
+  align-items: end;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) 140px auto;
+}
+
+.share-list {
+  display: grid;
+  gap: 8px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.share-list-item {
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) 70px auto;
+  padding: 10px 12px;
+}
+
+.share-list-item div {
+  display: grid;
+  gap: 2px;
+}
+
+.share-list-item small {
+  color: var(--muted);
 }
 
 .role-permission-workspace {
@@ -1032,13 +1152,18 @@ code {
   margin: 0;
 }
 
-.role-picker > .ui-input,
-.permission-discovery-toolbar {
+.role-picker > .ui-input {
   margin-top: 12px;
 }
 
-.permission-discovery-toolbar {
-  max-width: 520px;
+.role-editor-actions {
+  flex: 1;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.role-editor-actions .ui-input {
+  width: min(360px, 100%);
 }
 
 .role-picker-empty,
@@ -2492,6 +2617,11 @@ code {
 }
 
 @media (max-width: 640px) {
+  .share-form,
+  .share-list-item {
+    grid-template-columns: 1fr;
+  }
+
   .admin-discovery-search {
     width: 100%;
     flex-basis: 100%;

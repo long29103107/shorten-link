@@ -16,10 +16,20 @@ if (app.Environment.IsDevelopment())
 
 }
 
-app.UseShortenLinkRateLimiting();
+app.UseRateLimiter();
 
-app.MapShortenLinkEndpoints();
-app.MapApiHostEndpoints();
+app.MapShortLinkManagementEndpoints();
+app.MapRedirectEndpoints();
+app.MapSecuritySessionEndpoints();
+app.MapSecurityApiKeyEndpoints();
+app.MapSecurityRoleEndpoints();
+app.MapSecurityUserEndpoints();
+app.MapSecurityAssignmentEndpoints();
+app.MapHealthEndpoints();
+if (app.Environment.IsDevelopment())
+{
+    app.MapMockDataEndpoints();
+}
 
 app.Run();
 

@@ -12,6 +12,4 @@ internal static class HealthEndpoints
 
         return endpoints;
     }
-
-    private sealed record HealthResponse(string Status, string App);
 }

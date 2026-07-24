@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using ShortenLink.Core.Repositories;
 using ShortenLink.Core.Security;
 using ShortenLink.Infrastructure.Persistence;
 
@@ -24,7 +23,7 @@ public sealed class EfCoreShortenLinkSecurityRoleRepository : IShortenLinkSecuri
 
         return records
             .OrderBy(role => role.Name, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(role => role.Id, StringComparer.Ordinal)
+            .ThenBy(role => role.RoleId, StringComparer.Ordinal)
             .Select(role => role.ToDomain())
             .ToList();
     }
@@ -37,7 +36,7 @@ public sealed class EfCoreShortenLinkSecurityRoleRepository : IShortenLinkSecuri
 
         var record = await dbContext.SecurityCustomRoles
             .AsNoTracking()
-            .FirstOrDefaultAsync(role => role.Id == id, cancellationToken)
+            .FirstOrDefaultAsync(role => role.RoleId == id, cancellationToken)
             .ConfigureAwait(false);
 
         return record?.ToDomain();
@@ -50,12 +49,12 @@ public sealed class EfCoreShortenLinkSecurityRoleRepository : IShortenLinkSecuri
         ArgumentNullException.ThrowIfNull(role);
 
         var record = await dbContext.SecurityCustomRoles
-            .FirstOrDefaultAsync(candidate => candidate.Id == role.RoleKey, cancellationToken)
+            .FirstOrDefaultAsync(candidate => candidate.RoleId == role.RoleKey, cancellationToken)
             .ConfigureAwait(false);
 
         if (record is null)
         {
-            dbContext.SecurityCustomRoles.Add(ShortenLinkCustomRoleRecord.FromDomain(role));
+            dbContext.SecurityCustomRoles.Add(ShortenLinkCustomRolePersistenceEntity.FromDomain(role));
         }
         else
         {
@@ -93,7 +92,7 @@ public sealed class EfCoreShortenLinkSecurityRoleRepository : IShortenLinkSecuri
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
         dbContext.SecurityRolePermissionOverrides.RemoveRange(current);
-        dbContext.SecurityRolePermissionOverrides.AddRange(overrides.Select(item => new ShortenLinkRolePermissionOverrideRecord
+        dbContext.SecurityRolePermissionOverrides.AddRange(overrides.Select(item => new ShortenLinkRolePermissionOverridePersistenceEntity
         {
             RoleId = roleId,
             Permission = item.Permission,
@@ -109,7 +108,7 @@ public sealed class EfCoreShortenLinkSecurityRoleRepository : IShortenLinkSecuri
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
 
         var record = await dbContext.SecurityCustomRoles
-            .FirstOrDefaultAsync(role => role.Id == id, cancellationToken)
+            .FirstOrDefaultAsync(role => role.RoleId == id, cancellationToken)
             .ConfigureAwait(false);
         if (record is null)
         {

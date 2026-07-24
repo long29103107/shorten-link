@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using ShortenLink.Core.Repositories;
 using ShortenLink.Core.Security;
 using ShortenLink.Infrastructure.Persistence;
 
@@ -59,7 +58,7 @@ public sealed class EfCoreShortenLinkSecurityAssignmentRepository : IShortenLink
 
         if (record is null)
         {
-            dbContext.SecurityAssignments.Add(ShortenLinkSecurityAssignmentRecord.FromDomain(assignment));
+            dbContext.SecurityAssignments.Add(ShortenLinkSecurityAssignmentPersistenceEntity.FromDomain(assignment));
         }
         else
         {

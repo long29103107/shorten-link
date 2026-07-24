@@ -20,14 +20,14 @@ type LoginPageProps = {
 };
 
 export function LoginPage({ onSignedIn }: LoginPageProps) {
-  const [username, setUsername] = useState("admin");
+  const [email, setEmail] = useState("admin@shortenlink.local");
   const [password, setPassword] = useState("admin");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [failure, setFailure] = useState<RecoveryNotice | null>(null);
   const [fieldErrors, setFieldErrors] = useState<LoginFieldErrors>({});
 
   const signIn = async () => {
-    const nextFieldErrors = validateLoginForm({ username, password });
+    const nextFieldErrors = validateLoginForm({ email, password });
     if (hasFieldErrors(nextFieldErrors)) {
       setFieldErrors(nextFieldErrors);
       setFailure(null);
@@ -39,7 +39,7 @@ export function LoginPage({ onSignedIn }: LoginPageProps) {
     setFieldErrors({});
 
     try {
-      const result = await loginSecurityUser(username.trim(), password);
+      const result = await loginSecurityUser(email.trim(), password);
       storeSession(result.accessToken, result.refreshToken, result.user);
       showToast({
         title: "Signed in",
@@ -83,9 +83,9 @@ export function LoginPage({ onSignedIn }: LoginPageProps) {
                 : failure.message}
             </div>
           ) : null}
-          <FormField id="login-username" label="Username" autoComplete="username" value={username} error={fieldErrors.username} onChange={(value) => {
-                setUsername(value);
-                setFieldErrors((current) => ({ ...current, username: undefined }));
+          <FormField id="login-email" label="Email" type="email" autoComplete="email" value={email} error={fieldErrors.email} onChange={(value) => {
+                setEmail(value);
+                setFieldErrors((current) => ({ ...current, email: undefined }));
               }} />
           <FormField id="login-password" label="Password" type="password" autoComplete="current-password" value={password} error={fieldErrors.password} onChange={(value) => {
                 setPassword(value);

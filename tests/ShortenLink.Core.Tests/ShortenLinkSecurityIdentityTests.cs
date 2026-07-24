@@ -10,13 +10,15 @@ public sealed class ShortenLinkSecurityIdentityTests
     {
         var roles = ShortenLinkSystemRoles.PermissionBundles;
 
-        Assert.Contains(ShortenLinkSystemRoles.Owner, roles.Keys);
         Assert.Contains(ShortenLinkSystemRoles.Admin, roles.Keys);
-        Assert.Contains(ShortenLinkSystemRoles.Editor, roles.Keys);
-        Assert.Contains(ShortenLinkSystemRoles.Viewer, roles.Keys);
-        Assert.Contains(ShortenLinkPermissionCatalog.ShortLinksRead, roles[ShortenLinkSystemRoles.Viewer]);
-        Assert.Contains(ShortenLinkPermissionCatalog.AnalyticsRead, roles[ShortenLinkSystemRoles.Viewer]);
-        Assert.DoesNotContain(ShortenLinkPermissionCatalog.ShortLinksDelete, roles[ShortenLinkSystemRoles.Viewer]);
+        Assert.Contains(ShortenLinkSystemRoles.User, roles.Keys);
+        Assert.Equal(2, roles.Count);
+        Assert.Contains(ShortenLinkPermissionCatalog.ShortLinksRead, roles[ShortenLinkSystemRoles.User]);
+        Assert.Contains(ShortenLinkPermissionCatalog.AnalyticsRead, roles[ShortenLinkSystemRoles.User]);
+        Assert.Contains(ShortenLinkPermissionCatalog.AuditLogsRead, roles[ShortenLinkSystemRoles.User]);
+        Assert.Contains(ShortenLinkPermissionCatalog.ShortLinksStatus, roles[ShortenLinkSystemRoles.User]);
+        Assert.Contains(ShortenLinkPermissionCatalog.ShortLinksImport, roles[ShortenLinkSystemRoles.User]);
+        Assert.Contains(ShortenLinkPermissionCatalog.ShortLinksDelete, roles[ShortenLinkSystemRoles.User]);
         Assert.Equal(
             ShortenLinkPermissionCatalog.All.OrderBy(permission => permission),
             roles[ShortenLinkSystemRoles.Admin].OrderBy(permission => permission));
