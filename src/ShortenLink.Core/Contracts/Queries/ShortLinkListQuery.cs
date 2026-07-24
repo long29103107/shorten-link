@@ -1,7 +1,7 @@
 using ShortenLink.Core.Domain;
 using ShortenLink.Core.Security;
 
-namespace ShortenLink.Core.Contracts;
+namespace ShortenLink.Core.Contracts.Queries;
 
 public sealed record ShortLinkListQuery(
     string? Search,
@@ -16,10 +16,6 @@ public sealed record ShortLinkAccessScope(
     string? UserId,
     bool IsAdmin,
     IReadOnlyDictionary<string, ShortLinkShareAccess> SharedAccess);
-
-public sealed record ShortLinkListPage(
-    IReadOnlyList<ShortLink> Items,
-    int TotalCount);
 
 public enum ShortLinkListStatus
 {

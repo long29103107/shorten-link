@@ -1,6 +1,6 @@
 using ShortenLink.Core.Domain;
 
-namespace ShortenLink.Core.Contracts;
+namespace ShortenLink.Core.Contracts.Results;
 
 public sealed record ResolveShortLinkResult(
     bool Succeeded,

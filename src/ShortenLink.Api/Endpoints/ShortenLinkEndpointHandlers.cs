@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using ShortenLink.AspNetCore;
+using ShortenLink.Application.Features.ShortLinks.Create;
 using ShortenLink.Core;
 using ShortenLink.Core.Domain;
 using ShortenLink.Core.Security;
@@ -13,6 +14,7 @@ using ShortenLink.Core.Services;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using ShortenLink.Mediator;
 using ShortenLinkPermissions = ShortenLink.AspNetCore.ShortenLinkPermissions;
 
 namespace ShortenLink.Api.Endpoints;
@@ -61,7 +63,7 @@ internal static class ShortenLinkEndpointHandlers
             login.Token,
             login.Token,
             login.RefreshToken!,
-            SecurityCurrentUserResponse.FromPrincipal(login.Principal)));
+            CreateCurrentUserResponse(login.Principal)));
     }
 
     internal static async Task<Results<Ok<SecurityLoginResponse>, JsonHttpResult<ShortLinkErrorResponse>>> RefreshSecurityUserAsync(
@@ -83,7 +85,7 @@ internal static class ShortenLinkEndpointHandlers
             refreshed.Token,
             refreshed.Token,
             refreshed.RefreshToken,
-            SecurityCurrentUserResponse.FromPrincipal(refreshed.Principal)));
+            CreateCurrentUserResponse(refreshed.Principal)));
     }
 
     internal static async Task<Results<Ok<SecurityCurrentUserResponse>, JsonHttpResult<ShortLinkErrorResponse>>> GetCurrentSecurityUserAsync(
@@ -99,7 +101,7 @@ internal static class ShortenLinkEndpointHandlers
             return CreateErrorResponse(session.ErrorCode, session.ErrorMessage);
         }
 
-        return TypedResults.Ok(SecurityCurrentUserResponse.FromPrincipal(session.Principal));
+        return TypedResults.Ok(CreateCurrentUserResponse(session.Principal));
     }
 
     internal static async Task<Results<Ok<SecurityUserApiKeysListResponse>, JsonHttpResult<ShortLinkErrorResponse>>> ListCurrentUserApiKeysAsync(
@@ -695,7 +697,7 @@ internal static class ShortenLinkEndpointHandlers
 
     internal static async Task<Results<Created<ShortLinkCreatedResponse>, JsonHttpResult<ShortLinkErrorResponse>>> CreateShortLinkAsync(
         ShortLinkCreateRequest request,
-        IShortLinkService shortLinkService,
+        ISender sender,
         IShortenLinkAuthorizationService authorizationService,
         IShortenLinkUserSessionService userSessionService,
         IOptions<ShortenLinkOptions> options,
@@ -717,8 +719,8 @@ internal static class ShortenLinkEndpointHandlers
             .ConfigureAwait(false);
         var creator = currentSession.Succeeded ? currentSession.Principal : null;
 
-        var result = await shortLinkService.CreateAsync(
-            new CreateShortLinkRequest(
+        var result = await sender.Send(
+            new CreateShortLinkCommand(
                 request.OriginalUrl,
                 request.ExpiredAtUtc,
                 creator?.UserId,
@@ -1537,6 +1539,16 @@ internal static class ShortenLinkEndpointHandlers
 
     private static string CreateRawUserApiKey() =>
         $"slk_{Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant()}";
+
+    private static SecurityCurrentUserResponse CreateCurrentUserResponse(
+        ShortenLinkUserSessionPrincipal principal) =>
+        new(
+            principal.UserId,
+            principal.Username,
+            principal.DisplayName,
+            principal.Roles,
+            principal.Permissions,
+            principal.IssuedAtUtc);
 
     private static bool IsValidCredentialHash(string credentialKeyHash) =>
         credentialKeyHash.Length == 64

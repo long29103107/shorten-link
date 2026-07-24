@@ -1,11 +1,14 @@
 using ShortenLink.AspNetCore;
+using ShortenLink.Api;
 using ShortenLink.Api.Endpoints;
+using ShortenLink.Application.Features.ShortLinks.Create;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddShortenLink(builder.Configuration);
+builder.Services.AddApplicationMediator(typeof(CreateShortLinkCommand).Assembly);
 
 var app = builder.Build();
 

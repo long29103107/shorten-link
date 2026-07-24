@@ -1,0 +1,25 @@
+<Project>
+
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(MSBuildProjectName)' != 'ShortenLink.Mediator'">
+    <Using Include="ShortenLink.Core.Abstractions" />
+    <Using Include="ShortenLink.Core.Contracts" />
+    <Using Include="ShortenLink.Core.Contracts.Queries" />
+    <Using Include="ShortenLink.Core.Contracts.Requests" />
+    <Using Include="ShortenLink.Core.Contracts.Responses" />
+    <Using Include="ShortenLink.Core.Contracts.Results" />
+    <Using Include="ShortenLink.Core.Domain" />
+
+    <Using Include="ShortenLink.Core.Domain.ShortLinkEntity" Alias="ShortLink" />
+    <Using Include="ShortenLink.Core.Domain.ShortLinkClickEntity" Alias="ShortLinkClick" />
+    <Using Include="ShortenLink.Core.Security.ShortenLinkCustomRoleEntity" Alias="ShortenLinkCustomRole" />
+    <Using Include="ShortenLink.Core.Security.ShortenLinkSecurityAssignmentEntity" Alias="ShortenLinkSecurityAssignment" />
+    <Using Include="ShortenLink.Core.Security.ShortenLinkSecurityUserEntity" Alias="ShortenLinkSecurityUser" />
+    <Using Include="ShortenLink.Core.Security.ShortenLinkUserApiKeyEntity" Alias="ShortenLinkUserApiKey" />
+  </ItemGroup>
+
+</Project>
